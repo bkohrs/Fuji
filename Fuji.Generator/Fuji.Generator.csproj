@@ -8,6 +8,23 @@
         <RootNamespace>Fuji</RootNamespace>
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     </PropertyGroup>
+    <PropertyGroup>
+        <PackageId>Fuji.Generator</PackageId>
+        <Version>0.0.1-alpha</Version>
+        <Title>Fuji Generator</Title>
+        <Authors>Brian Kohrs</Authors>
+        <Description>Source Generator to build dependency injection providers or service collection builders</Description>
+        <PackageProjectUrl>https://github.com/bkohrs/Fuji</PackageProjectUrl>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <RepositoryUrl>https://github.com/bkohrs/Fuji</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+        <IncludeBuildOutput>false</IncludeBuildOutput>
+    </PropertyGroup>
+    
+    <ItemGroup>
+        <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+        <None Include="_._" Pack="true" PackagePath="lib/netstandard2.0" Visible="false" />
+    </ItemGroup>
 
     <ItemGroup>
         <ProjectReference Include="..\Fuji.Core\Fuji.Core.csproj" />

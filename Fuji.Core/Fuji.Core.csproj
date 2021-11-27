@@ -8,5 +8,16 @@
         <RootNamespace>Fuji</RootNamespace>
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     </PropertyGroup>
+    <PropertyGroup>
+        <PackageId>Fuji.Core</PackageId>
+        <Version>0.0.1-alpha</Version>
+        <Title>Fuji Core</Title>
+        <Authors>Brian Kohrs</Authors>
+        <Description>Attributes to be used by Fuji.Generator</Description>
+        <PackageProjectUrl>https://github.com/bkohrs/Fuji</PackageProjectUrl>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <RepositoryUrl>https://github.com/bkohrs/Fuji</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+    </PropertyGroup>
 
 </Project>
