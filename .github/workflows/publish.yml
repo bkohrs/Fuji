@@ -1,0 +1,23 @@
+name: Publish dotnet package
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-dotnet@v1
+        with:
+          dotnet-version: '6.0.x'
+      - name: Build the project
+        run: dotnet build --configuration Release
+      - name: Run tests
+        run: dotnet test --no-build --configuration Release
+      - name: Create the packages
+        run: dotnet pack --no-build --configuration Release -o .
+      - name: Publish the packages to NuGet
+        env:
+          NUGET_AUTH_TOKEN: ${{secrets.NUGET_TOKEN}}
+        run: dotnet nuget push *.nupkg -s https://api.nuget.org/v3/index.json -k $NUGET_AUTH_TOKEN
