@@ -4,6 +4,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fuji.Core", "Fuji.Core\Fuji
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fuji.Generator", "Fuji.Generator\Fuji.Generator.csproj", "{EC9C64F5-32D4-46BC-AF29-F68C981B0162}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fuji.Generated", "Fuji.Generated\Fuji.Generated.csproj", "{16BAED31-324C-451E-9879-EE0F71384007}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fuji.Generated.Tests", "Fuji.Generated.Tests\Fuji.Generated.Tests.csproj", "{64518294-4509-4D77-A0CB-F66F50E54DE9}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -18,5 +22,13 @@ Global
 		{EC9C64F5-32D4-46BC-AF29-F68C981B0162}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{EC9C64F5-32D4-46BC-AF29-F68C981B0162}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{EC9C64F5-32D4-46BC-AF29-F68C981B0162}.Release|Any CPU.Build.0 = Release|Any CPU
+		{16BAED31-324C-451E-9879-EE0F71384007}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{16BAED31-324C-451E-9879-EE0F71384007}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{16BAED31-324C-451E-9879-EE0F71384007}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{16BAED31-324C-451E-9879-EE0F71384007}.Release|Any CPU.Build.0 = Release|Any CPU
+		{64518294-4509-4D77-A0CB-F66F50E54DE9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{64518294-4509-4D77-A0CB-F66F50E54DE9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{64518294-4509-4D77-A0CB-F66F50E54DE9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{64518294-4509-4D77-A0CB-F66F50E54DE9}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

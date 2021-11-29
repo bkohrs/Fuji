@@ -30,4 +30,12 @@
         <ProjectReference Include="..\Fuji.Core\Fuji.Core.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+        <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.3.3">
+          <PrivateAssets>all</PrivateAssets>
+          <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.0.1" />
+    </ItemGroup>
+
 </Project>
