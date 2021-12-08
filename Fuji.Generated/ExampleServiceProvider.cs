@@ -1,4 +1,6 @@
-﻿namespace Fuji.Generated;
+﻿using Fuji.Generated.Services;
+
+namespace Fuji.Generated;
 
 [ServiceProvider]
 [ProvideTransient(typeof(ITransientService), typeof(TransientService))]
@@ -8,6 +10,8 @@
 [ProvideTransient(typeof(TransientDisposableService))]
 [ProvideTransient(typeof(TransientAsyncDisposableService))]
 [ProvideTransient(typeof(ServiceDependsOnSelfDescribed))]
+[ProvideTransient(typeof(DependentLibraryService))]
+[ProvideTransient(typeof(ServiceDependsOnLibraryService))]
 [ProvideSingleton(typeof(ISingletonService), typeof(SingletonService))]
 [ProvideSingleton(typeof(SingletonDisposableService))]
 [ProvideSingleton(typeof(SingletonAsyncDisposableService))]

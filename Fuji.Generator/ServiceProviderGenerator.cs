@@ -50,7 +50,11 @@ public class ServiceProviderGenerator : IIncrementalGenerator
             transientServiceAttribute,
             singletonServiceAttribute,
             scopedServiceAttribute);
+
+        var libraryCandidates = GetLibraryCandidates(compilation,
+            ImmutableArray.Create(transientServiceAttribute, singletonServiceAttribute, scopedServiceAttribute));
         var partitionedTypes = ResolveTypes(compilation, distinctTypes, attributeTypeSymbols)
+            .Concat(libraryCandidates)
             .ToLookup(type => type.Attribute.AttributeClass, SymbolEqualityComparer.Default);
 
         var transientSelfDescribedServices = partitionedTypes[transientServiceAttribute]
@@ -188,6 +192,14 @@ public class ServiceProviderGenerator : IIncrementalGenerator
             .ToImmutableArray();
     }
 
+    private ImmutableArray<AttributedSymbol> GetLibraryCandidates(Compilation compilation,
+        ImmutableArray<INamedTypeSymbol> attributeTypeSymbols)
+    {
+        return compilation.SourceModule.ReferencedAssemblySymbols
+            .SelectMany(assemblySymbol => GetSymbols(assemblySymbol.GlobalNamespace, attributeTypeSymbols))
+            .ToImmutableArray();
+    }
+
     private ImmutableArray<InjectionCandidate> GetSelfProvidedServices(AttributedSymbol provider,
         ImmutableArray<InjectionCandidate> selfDescribedServices, INamedTypeSymbol provideServiceAttribute)
     {
@@ -202,6 +214,24 @@ public class ServiceProviderGenerator : IIncrementalGenerator
             }
             return false;
         })).ToImmutableArray();
+    }
+
+    private IEnumerable<AttributedSymbol> GetSymbols(INamespaceSymbol namespaceSymbol, ImmutableArray<INamedTypeSymbol> attributeTypeSymbols)
+    {
+        foreach (var symbol in namespaceSymbol.GetTypeMembers())
+        {
+            var attributes = symbol.GetAttributes();
+            var attributeData = attributes.FirstOrDefault(attribute => attributeTypeSymbols.Any(
+                attributeTypeSymbol =>
+                    SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, attributeTypeSymbol)));
+            if (attributeData != null)
+                yield return new AttributedSymbol(symbol, attributeData);
+        }
+        foreach (var subNamespaceSymbol in namespaceSymbol.GetNamespaceMembers())
+        {
+            foreach (var symbol in GetSymbols(subNamespaceSymbol, attributeTypeSymbols))
+                yield return symbol;
+        }
     }
 
     public void Initialize(IncrementalGeneratorInitializationContext context)

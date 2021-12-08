@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿using Fuji.Generated.Services;
+using Microsoft.Extensions.DependencyInjection;
 using NUnit.Framework;
 
 namespace Fuji.Generated.Tests;
@@ -139,5 +140,21 @@ public class ExampleServiceCollectionBuilderTests
     {
         var service = _provider?.GetService<SelfProvidedService>();
         Assert.That(service, Is.Not.Null);
+    }
+
+    [Test]
+    public void DependentLibraryService()
+    {
+        var service = _provider?.GetService<DependentLibraryService>();
+        Assert.That(service, Is.Not.Null);
+    }
+
+    [Test]
+    public void ServiceDependsOnLibraryService()
+    {
+        var service = _provider?.GetService<ServiceDependsOnLibraryService>();
+        Assert.That(service, Is.Not.Null);
+        var dependencyService = _provider?.GetService<SelfDescribedDependentLibraryService>();
+        Assert.That(dependencyService, Is.Not.Null);
     }
 }
