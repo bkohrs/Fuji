@@ -9,7 +9,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Fuji.Generator" Version="0.0.9-alpha" />
+        <PackageReference Include="Fuji.Generator" Version="0.1.0-beta" />
     </ItemGroup>
 
 </Project>

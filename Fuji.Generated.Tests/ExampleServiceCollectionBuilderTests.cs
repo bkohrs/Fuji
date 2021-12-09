@@ -13,6 +13,7 @@ public class ExampleServiceCollectionBuilderTests
     public void SetUp()
     {
         var collection = new ServiceCollection();
+        collection.AddTransient<CollectionProvidedService>();
         new ExampleServiceCollectionBuilder().Build(collection);
         _provider = collection.BuildServiceProvider();
     }
@@ -172,5 +173,12 @@ public class ExampleServiceCollectionBuilderTests
         var service = _provider?.GetService<FactoryProvidedSingletonNeedingServiceProvider>();
         Assert.That(service, Is.Not.Null);
         Assert.That(service?.FactoryProvided, Is.True);
+    }
+
+    [Test]
+    public void ServiceDependentOnCollectionProvided()
+    {
+        var service = _provider?.GetService<ServiceDependentOnCollectionProvided>();
+        Assert.That(service, Is.Not.Null);
     }
 }

@@ -9,11 +9,13 @@ namespace Fuji.Generated;
 [ProvideTransient(typeof(ServiceDependsOnSelfDescribed))]
 [ProvideTransient(typeof(DependentLibraryService))]
 [ProvideTransient(typeof(ServiceDependsOnLibraryService))]
+[ProvideTransient(typeof(ServiceDependentOnCollectionProvided))]
 [ProvideSingleton(typeof(ISingletonService), typeof(SingletonService))]
 [ProvideSingleton(typeof(FactoryProvidedSingleton), Factory = nameof(CreateFactoryProvidedSingleton))]
 [ProvideSingleton(typeof(FactoryProvidedSingletonNeedingServiceProvider), Factory = nameof(CreateFactoryProvidedSingletonNeedingServiceProvider))]
 [ProvideScoped(typeof(IScopedService), typeof(ScopedService))]
 [ProvideScoped(typeof(ScopedAsyncDisposableService))]
+[ProvidedByCollection(typeof(CollectionProvidedService))]
 public partial class ExampleServiceCollectionBuilder
 {
     private FactoryProvidedSingleton CreateFactoryProvidedSingleton()

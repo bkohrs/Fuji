@@ -34,6 +34,7 @@ public class ServiceProviderGenerator : IIncrementalGenerator
         var singletonServiceAttribute = compilation.GetRequiredTypeByMetadataName(AttributeNames.SingletonService);
         var scopedServiceAttribute = compilation.GetRequiredTypeByMetadataName(AttributeNames.ScopedService);
         var provideServiceAttribute = compilation.GetRequiredTypeByMetadataName(AttributeNames.ProvideService);
+        var providedByCollectionAttribute = compilation.GetRequiredTypeByMetadataName("Fuji.ProvidedByCollectionAttribute");
         var provideAttributes = ImmutableArray.Create(
             (provideTransientAttribute, ServiceLifetime.Transient),
             (provideSingletonAttribute, ServiceLifetime.Singleton),
@@ -73,13 +74,14 @@ public class ServiceProviderGenerator : IIncrementalGenerator
         foreach (var provider in partitionedTypes[serviceProviderAttributeType])
         {
             GenerateCode(sourceProductionContext, provider, provideAttributes,
-                asyncDisposableSymbol, disposableSymbol, selfDescribedServices,provideServiceAttribute,
+                asyncDisposableSymbol, disposableSymbol, selfDescribedServices, provideServiceAttribute, null,
                 definition => new SourceCodeGenerator(definition).GenerateServiceProvider());
         }
         foreach (var provider in partitionedTypes[serviceCollectionBuilderAttributeType])
         {
             GenerateCode(sourceProductionContext, provider, provideAttributes,
-                asyncDisposableSymbol, disposableSymbol, selfDescribedServices,provideServiceAttribute,
+                asyncDisposableSymbol, disposableSymbol, selfDescribedServices, provideServiceAttribute,
+                providedByCollectionAttribute,
                 definition => new SourceCodeGenerator(definition).GenerateServiceCollectionBuilder());
         }
     }
@@ -89,13 +91,17 @@ public class ServiceProviderGenerator : IIncrementalGenerator
         INamedTypeSymbol asyncDisposableSymbol, INamedTypeSymbol disposableSymbol,
         ImmutableArray<InjectionCandidate> selfDescribedServices,
         INamedTypeSymbol provideServiceAttribute,
+        INamedTypeSymbol? providedByCollectionAttribute,
         Func<ServiceProviderDefinition, string> generateContent)
     {
         var injectionCandidates =
         GetInjectionCandidates(provider.Symbol, provideAttributes,
             GetSelfProvidedServices(provider, selfDescribedServices, provideServiceAttribute));
+        var providedByCollection = providedByCollectionAttribute != null
+            ? GetProvidedByCollectionServices(provider, providedByCollectionAttribute)
+            : Enumerable.Empty<INamedTypeSymbol>();
         var injectableServices = GetInjectableServices(injectionCandidates, asyncDisposableSymbol, disposableSymbol,
-            selfDescribedServices);
+            selfDescribedServices, providedByCollection);
         var debugOutputPath =
             provider.Attribute.NamedArguments.Where(arg => arg.Key == "DebugOutputPath")
                 .Select(arg => arg.Value.Value).FirstOrDefault() as string;
@@ -114,14 +120,14 @@ public class ServiceProviderGenerator : IIncrementalGenerator
     }
 
     private ImmutableArray<INamedTypeSymbol> GetConstructorArguments(InjectionCandidate service,
-        ImmutableDictionary<ISymbol, InjectionCandidate> validServices)
+        Func<ITypeSymbol, bool> isValidService)
     {
         if (service.CustomFactory != null)
             return ImmutableArray<INamedTypeSymbol>.Empty;
         var constructor = service.ImplementationType.Constructors
             .OrderByDescending(ctor => ctor.Parameters.Length)
             .FirstOrDefault(ctor =>
-                ctor.Parameters.All(parameter => validServices.ContainsKey(parameter.Type)));
+                ctor.Parameters.All(parameter => isValidService(parameter.Type)));
         if (constructor == null)
         {
             throw new ArgumentException(
@@ -135,16 +141,24 @@ public class ServiceProviderGenerator : IIncrementalGenerator
 
     private ImmutableArray<InjectableService> GetInjectableServices(
         ImmutableArray<InjectionCandidate> injectionCandidates, INamedTypeSymbol asyncDisposableSymbol,
-        INamedTypeSymbol disposableSymbol, IEnumerable<InjectionCandidate> selfDescribedServices)
+        INamedTypeSymbol disposableSymbol, IEnumerable<InjectionCandidate> selfDescribedServices,
+        IEnumerable<INamedTypeSymbol> providedByCollection)
     {
         var identifiedServices = new Dictionary<ISymbol, InjectableService>(SymbolEqualityComparer.Default);
+        var providedByCollectionHashSet = providedByCollection.ToImmutableHashSet(SymbolEqualityComparer.Default);
+
+        bool ServiceHasBeenProcessed(INamedTypeSymbol symbol)
+        {
+            return providedByCollectionHashSet.Contains(symbol) || identifiedServices.ContainsKey(symbol);
+        }
+
         var validServices = injectionCandidates.Concat(selfDescribedServices)
             .ToImmutableDictionary<InjectionCandidate, ISymbol>(candidate => candidate.InterfaceType, SymbolEqualityComparer.Default);
         var services = new Queue<InjectionCandidate>(injectionCandidates);
         while (services.Count > 0)
         {
             var service = services.Dequeue();
-            if (identifiedServices.ContainsKey(service.InterfaceType))
+            if (ServiceHasBeenProcessed(service.InterfaceType))
                 continue;
             var disposeType = DisposeType.None;
             if (service.ImplementationType.AllInterfaces.Any(symbol =>
@@ -157,12 +171,13 @@ public class ServiceProviderGenerator : IIncrementalGenerator
             {
                 disposeType = DisposeType.Sync;
             }
-            var constructorArguments = GetConstructorArguments(service, validServices);
+            var constructorArguments = GetConstructorArguments(service, type => providedByCollectionHashSet.Contains(type) ||
+                validServices.ContainsKey(type));
             identifiedServices[service.InterfaceType] = new InjectableService(service.InterfaceType,
                 service.ImplementationType, service.Lifetime, constructorArguments, disposeType, service.CustomFactory);
             foreach (var argument in constructorArguments)
             {
-                if (identifiedServices.ContainsKey(argument))
+                if (ServiceHasBeenProcessed(argument))
                     continue;
                 services.Enqueue(validServices[argument]);
             }
@@ -216,6 +231,25 @@ public class ServiceProviderGenerator : IIncrementalGenerator
         return compilation.SourceModule.ReferencedAssemblySymbols
             .SelectMany(assemblySymbol => GetSymbols(assemblySymbol.GlobalNamespace, attributeTypeSymbols))
             .ToImmutableArray();
+    }
+
+    private IEnumerable<INamedTypeSymbol> GetProvidedByCollectionServices(AttributedSymbol provider,
+        INamedTypeSymbol providedByCollectionAttribute)
+    {
+        return provider.Symbol.GetAttributes()
+            .Select<AttributeData, INamedTypeSymbol?>(attribute =>
+            {
+                if (!SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, providedByCollectionAttribute))
+                    return null;
+                if (attribute.ConstructorArguments.Length == 1 &&
+                    attribute.ConstructorArguments[0].Value is INamedTypeSymbol namedTypeSymbol)
+                {
+                    return namedTypeSymbol;
+                }
+                return null;
+            })
+            .Where(namedTypeSymbol => namedTypeSymbol is not null)
+            .Select(symbol => symbol!);
     }
 
     private ImmutableArray<InjectionCandidate> GetSelfProvidedServices(AttributedSymbol provider,
