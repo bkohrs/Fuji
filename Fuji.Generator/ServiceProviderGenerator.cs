@@ -19,9 +19,11 @@ public class ServiceProviderGenerator : IIncrementalGenerator
         var serviceCollectionBuilderAttributeType = compilation.GetRequiredTypeByMetadataName(AttributeNames.ServiceCollectionBuilder);
         var provideTransientAttribute = compilation.GetRequiredTypeByMetadataName(AttributeNames.ProvideTransient);
         var provideSingletonAttribute = compilation.GetRequiredTypeByMetadataName(AttributeNames.ProvideSingleton);
+        var provideScopedAttribute = compilation.GetRequiredTypeByMetadataName(AttributeNames.ProvideScoped);
         var provideAttributes = ImmutableArray.Create(
             (provideTransientAttribute, ServiceLifetime.Transient),
-            (provideSingletonAttribute, ServiceLifetime.Singleton));
+            (provideSingletonAttribute, ServiceLifetime.Singleton),
+            (provideScopedAttribute, ServiceLifetime.Scoped));
         var distinctTypes = typeDeclarationSyntaxes
             .Where(typeSyntax => typeSyntax is not null)
             .Cast<TypeDeclarationSyntax>()
@@ -203,6 +205,7 @@ public class ServiceProviderGenerator : IIncrementalGenerator
 
     private static class AttributeNames
     {
+        public const string ProvideScoped = "Fuji.ProvideScopedAttribute";
         public const string ProvideSingleton = "Fuji.ProvideSingletonAttribute";
         public const string ProvideTransient = "Fuji.ProvideTransientAttribute";
         public const string ServiceCollectionBuilder = "Fuji.ServiceCollectionBuilderAttribute";
