@@ -10,7 +10,7 @@
     </PropertyGroup>
     <PropertyGroup>
         <PackageId>Fuji.Core</PackageId>
-        <Version>0.0.6-alpha</Version>
+        <Version>0.0.7-alpha</Version>
         <Title>Fuji Core</Title>
         <Authors>Brian Kohrs</Authors>
         <Description>Attributes to be used by Fuji.Generator</Description>

@@ -283,4 +283,11 @@ public class ExampleServiceProviderTests
         var service = _provider?.GetService<ServiceDependsOnSelfDescribed>();
         Assert.That(service, Is.Not.Null);
     }
+
+    [Test]
+    public void SelfProvidedService()
+    {
+        var service = _provider?.GetService<SelfProvidedService>();
+        Assert.That(service, Is.Not.Null);
+    }
 }

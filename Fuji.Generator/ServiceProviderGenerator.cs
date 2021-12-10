@@ -33,6 +33,7 @@ public class ServiceProviderGenerator : IIncrementalGenerator
         var transientServiceAttribute = compilation.GetRequiredTypeByMetadataName(AttributeNames.TransientService);
         var singletonServiceAttribute = compilation.GetRequiredTypeByMetadataName(AttributeNames.SingletonService);
         var scopedServiceAttribute = compilation.GetRequiredTypeByMetadataName(AttributeNames.ScopedService);
+        var provideServiceAttribute = compilation.GetRequiredTypeByMetadataName(AttributeNames.ProvideService);
         var provideAttributes = ImmutableArray.Create(
             (provideTransientAttribute, ServiceLifetime.Transient),
             (provideSingletonAttribute, ServiceLifetime.Singleton),
@@ -68,13 +69,13 @@ public class ServiceProviderGenerator : IIncrementalGenerator
         foreach (var provider in partitionedTypes[serviceProviderAttributeType])
         {
             GenerateCode(sourceProductionContext, provider, provideAttributes,
-                asyncDisposableSymbol, disposableSymbol, selfDescribedServices,
+                asyncDisposableSymbol, disposableSymbol, selfDescribedServices,provideServiceAttribute,
                 definition => new SourceCodeGenerator(definition).GenerateServiceProvider());
         }
         foreach (var provider in partitionedTypes[serviceCollectionBuilderAttributeType])
         {
             GenerateCode(sourceProductionContext, provider, provideAttributes,
-                asyncDisposableSymbol, disposableSymbol, selfDescribedServices,
+                asyncDisposableSymbol, disposableSymbol, selfDescribedServices,provideServiceAttribute,
                 definition => new SourceCodeGenerator(definition).GenerateServiceCollectionBuilder());
         }
     }
@@ -83,10 +84,12 @@ public class ServiceProviderGenerator : IIncrementalGenerator
         ImmutableArray<(INamedTypeSymbol Symbol, ServiceLifetime Lifetime)> provideAttributes,
         INamedTypeSymbol asyncDisposableSymbol, INamedTypeSymbol disposableSymbol,
         ImmutableArray<InjectionCandidate> selfDescribedServices,
+        INamedTypeSymbol provideServiceAttribute,
         Func<ServiceProviderDefinition, string> generateContent)
     {
         var injectionCandidates =
-            GetInjectionCandidates(provider.Symbol, provideAttributes);
+        GetInjectionCandidates(provider.Symbol, provideAttributes,
+            GetSelfProvidedServices(provider, selfDescribedServices, provideServiceAttribute));
         var injectableServices = GetInjectableServices(injectionCandidates, asyncDisposableSymbol, disposableSymbol,
             selfDescribedServices);
         var debugOutputPath =
@@ -153,7 +156,8 @@ public class ServiceProviderGenerator : IIncrementalGenerator
     }
 
     private ImmutableArray<InjectionCandidate> GetInjectionCandidates(
-        INamedTypeSymbol type, ImmutableArray<(INamedTypeSymbol Symbol, ServiceLifetime Lifetime)> provideAttributes)
+        INamedTypeSymbol type, ImmutableArray<(INamedTypeSymbol Symbol, ServiceLifetime Lifetime)> provideAttributes,
+        ImmutableArray<InjectionCandidate> selfProvidedServices)
     {
         return type.GetAttributes()
             .Select<AttributeData, InjectionCandidate?>(
@@ -180,7 +184,24 @@ public class ServiceProviderGenerator : IIncrementalGenerator
                 })
             .Where(candidate => candidate is not null)
             .Cast<InjectionCandidate>()
+            .Concat(selfProvidedServices)
             .ToImmutableArray();
+    }
+
+    private ImmutableArray<InjectionCandidate> GetSelfProvidedServices(AttributedSymbol provider,
+        ImmutableArray<InjectionCandidate> selfDescribedServices, INamedTypeSymbol provideServiceAttribute)
+    {
+        return selfDescribedServices.Where(service => service.ImplementationType.GetAttributes().Any(attribute =>
+        {
+            if (!SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, provideServiceAttribute))
+                return false;
+            if (attribute.ConstructorArguments.Length == 1 &&
+                attribute.ConstructorArguments[0].Value is INamedTypeSymbol namedTypeSymbol)
+            {
+                return SymbolEqualityComparer.Default.Equals(namedTypeSymbol, provider.Symbol);
+            }
+            return false;
+        })).ToImmutableArray();
     }
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
@@ -250,6 +271,7 @@ public class ServiceProviderGenerator : IIncrementalGenerator
     private static class AttributeNames
     {
         public const string ProvideScoped = "Fuji.ProvideScopedAttribute";
+        public const string ProvideService = "Fuji.ProvideServiceAttribute";
         public const string ProvideSingleton = "Fuji.ProvideSingletonAttribute";
         public const string ProvideTransient = "Fuji.ProvideTransientAttribute";
         public const string ScopedService = "Fuji.ScopedServiceAttribute";
