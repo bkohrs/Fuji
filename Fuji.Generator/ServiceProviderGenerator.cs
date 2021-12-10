@@ -18,7 +18,10 @@ public class ServiceProviderGenerator : IIncrementalGenerator
         var serviceProviderAttributeType = compilation.GetRequiredTypeByMetadataName(AttributeNames.ServiceProvider);
         var serviceCollectionBuilderAttributeType = compilation.GetRequiredTypeByMetadataName(AttributeNames.ServiceCollectionBuilder);
         var provideTransientAttribute = compilation.GetRequiredTypeByMetadataName(AttributeNames.ProvideTransient);
-        var provideAttributes = ImmutableArray.Create(provideTransientAttribute);
+        var provideSingletonAttribute = compilation.GetRequiredTypeByMetadataName(AttributeNames.ProvideSingleton);
+        var provideAttributes = ImmutableArray.Create(
+            (provideTransientAttribute, ServiceLifetime.Transient),
+            (provideSingletonAttribute, ServiceLifetime.Singleton));
         var distinctTypes = typeDeclarationSyntaxes
             .Where(typeSyntax => typeSyntax is not null)
             .Cast<TypeDeclarationSyntax>()
@@ -44,7 +47,7 @@ public class ServiceProviderGenerator : IIncrementalGenerator
     }
 
     private void GenerateCode(SourceProductionContext sourceProductionContext, AttributedSymbol provider,
-        ImmutableArray<INamedTypeSymbol> provideAttributes,
+        ImmutableArray<(INamedTypeSymbol Symbol, ServiceLifetime Lifetime)> provideAttributes,
         INamedTypeSymbol asyncDisposableSymbol, INamedTypeSymbol disposableSymbol,
         Func<ServiceProviderDefinition, string> generateContent)
     {
@@ -96,7 +99,7 @@ public class ServiceProviderGenerator : IIncrementalGenerator
                 }
                 return constructor != null
                     ? new InjectableService(
-                        candidate.InterfaceType, candidate.ImplementationType,
+                        candidate.InterfaceType, candidate.ImplementationType, candidate.Lifetime,
                         constructor.Parameters.Select(parameter => parameter.Type).Cast<INamedTypeSymbol>()
                             .ToImmutableArray(), disposeType)
                     : null;
@@ -107,14 +110,17 @@ public class ServiceProviderGenerator : IIncrementalGenerator
     }
 
     private ImmutableArray<InjectionCandidate> GetInjectionCandidates(
-        INamedTypeSymbol type, ImmutableArray<INamedTypeSymbol> provideAttributes)
+        INamedTypeSymbol type, ImmutableArray<(INamedTypeSymbol Symbol, ServiceLifetime Lifetime)> provideAttributes)
     {
         return type.GetAttributes()
-            .Where(attribute => provideAttributes.Any(provideAttribute =>
-                SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, provideAttribute)))
             .Select<AttributeData, InjectionCandidate?>(
                 provideAttribute =>
                 {
+                    var lifetime = provideAttributes
+                        .Where(attr =>
+                            SymbolEqualityComparer.Default.Equals(provideAttribute.AttributeClass, attr.Symbol))
+                        .Select(attr => (ServiceLifetime?)attr.Lifetime)
+                        .FirstOrDefault();
                     var interfaceType =
                         provideAttribute.ConstructorArguments.Length > 0 &&
                         provideAttribute.ConstructorArguments[0].Value is INamedTypeSymbol interfaceArg
@@ -125,8 +131,8 @@ public class ServiceProviderGenerator : IIncrementalGenerator
                         provideAttribute.ConstructorArguments[1].Value is INamedTypeSymbol implementationArg
                             ? implementationArg
                             : interfaceType;
-                    return interfaceType != null && implementationType != null
-                        ? new InjectionCandidate(interfaceType, implementationType)
+                    return lifetime != null && interfaceType != null && implementationType != null
+                        ? new InjectionCandidate(interfaceType, implementationType, lifetime.Value)
                         : null;
                 })
             .Where(candidate => candidate is not null)
@@ -197,6 +203,7 @@ public class ServiceProviderGenerator : IIncrementalGenerator
 
     private static class AttributeNames
     {
+        public const string ProvideSingleton = "Fuji.ProvideSingletonAttribute";
         public const string ProvideTransient = "Fuji.ProvideTransientAttribute";
         public const string ServiceCollectionBuilder = "Fuji.ServiceCollectionBuilderAttribute";
         public const string ServiceProvider = "Fuji.ServiceProviderAttribute";

@@ -4,4 +4,5 @@ namespace Fuji;
 
 public record struct InjectionCandidate(
     INamedTypeSymbol InterfaceType,
-    INamedTypeSymbol ImplementationType);
+    INamedTypeSymbol ImplementationType,
+    ServiceLifetime Lifetime);

@@ -10,7 +10,7 @@
     </PropertyGroup>
     <PropertyGroup>
         <PackageId>Fuji.Generator</PackageId>
-        <Version>0.0.3-alpha</Version>
+        <Version>0.0.4-alpha</Version>
         <Title>Fuji Generator</Title>
         <Authors>Brian Kohrs</Authors>
         <Description>Source Generator to build dependency injection providers or service collection builders</Description>

@@ -1,0 +1,14 @@
+﻿namespace Fuji;
+
+[AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
+public class ProvideSingletonAttribute : Attribute
+{
+    public ProvideSingletonAttribute(Type interfaceType, Type? implementationType = null)
+    {
+        ImplementationType = implementationType ?? interfaceType;
+        InterfaceType = interfaceType;
+    }
+
+    public Type ImplementationType { get; }
+    public Type InterfaceType { get; }
+}

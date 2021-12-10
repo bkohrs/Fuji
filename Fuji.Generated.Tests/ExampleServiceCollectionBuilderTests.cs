@@ -28,4 +28,16 @@ public class ExampleServiceCollectionBuilderTests
         Assert.That(service2, Is.TypeOf<TransientService>());
         Assert.That(service2, Is.Not.SameAs(service1));
     }
+
+    [Test]
+    public void SingletonService()
+    {
+        var service1 = _provider?.GetService<ISingletonService>();
+        Assert.That(service1, Is.Not.Null);
+        Assert.That(service1, Is.TypeOf<SingletonService>());
+
+        var service2 = _provider?.GetService<ISingletonService>();
+        Assert.That(service2, Is.Not.Null);
+        Assert.That(service2, Is.SameAs(service1));
+    }
 }

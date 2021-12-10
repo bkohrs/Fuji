@@ -35,7 +35,19 @@ public class SourceCodeGenerator
                        classScope.CreateScope("public void Build(IServiceCollection serviceCollection)"))
                 {
                     foreach (var service in _definition.ProvidedServices)
-                        methodScope.WriteLine($"serviceCollection.AddTransient(typeof({service.InterfaceType.ToDisplayString()}), typeof({service.ImplementationType.ToDisplayString()}));");
+                    {
+                        switch (service.Lifetime)
+                        {
+                            case ServiceLifetime.Transient:
+                                methodScope.WriteLine(
+                                    $"serviceCollection.AddTransient(typeof({service.InterfaceType.ToDisplayString()}), typeof({service.ImplementationType.ToDisplayString()}));");
+                                break;
+                            case ServiceLifetime.Singleton:
+                                methodScope.WriteLine(
+                                    $"serviceCollection.AddSingleton(typeof({service.InterfaceType.ToDisplayString()}), typeof({service.ImplementationType.ToDisplayString()}));");
+                                break;
+                        }
+                    }
                 }
             }
         }
@@ -58,6 +70,11 @@ public class SourceCodeGenerator
                 classScope.WriteLine("private readonly System.Collections.Concurrent.ConcurrentBag<IDisposable> _disposables = new();");
                 classScope.WriteLine(
                     "private readonly System.Collections.Generic.Dictionary<Type, Func<object>> _factory = new();");
+                foreach (var singleton in _definition.ProvidedServices.Where(service =>
+                             service.Lifetime == ServiceLifetime.Singleton))
+                {
+                    classScope.WriteLine($"private readonly System.Lazy<{singleton.InterfaceType}> {GetServiceFieldName(singleton.InterfaceType)};");
+                }
                 classScope.WriteLine("");
                 using (var methodScope =
                        classScope.CreateScope("protected T AddAsyncDisposable<T>(T asyncDisposable) where T: System.IAsyncDisposable"))
@@ -83,8 +100,13 @@ public class SourceCodeGenerator
                 using (var methodScope = classScope.CreateScope($"public {_definition.ServiceProviderType.Name}()"))
                 {
                     foreach (var service in _definition.ProvidedServices)
+                    {
+                        if (service.Lifetime == ServiceLifetime.Singleton)
+                            methodScope.WriteLine($"{GetServiceFieldName(service.InterfaceType)} = new System.Lazy<{service.InterfaceType}>({GetFactoryMethodName(service)});");
                         methodScope.WriteLine(
-                            $"_factory[typeof({service.InterfaceType.ToDisplayString()})] = {GetFactoryMethodName(service.InterfaceType)};");
+                            $"_factory[typeof({service.InterfaceType.ToDisplayString()})] = {GetResolutionMethodName(service.InterfaceType)};");
+
+                    }
                 }
                 using (var methodScope = classScope.CreateScope("public object? GetService(Type serviceType)"))
                 {
@@ -93,39 +115,60 @@ public class SourceCodeGenerator
 
                 foreach (var service in _definition.ProvidedServices)
                 {
-                    using var methodScope = classScope.CreateScope(
-                        $"private {service.InterfaceType.ToDisplayString()} {GetFactoryMethodName(service.InterfaceType)}()");
-                    var disposablePrefix = service.DisposeType switch
+                    using (var methodScope = classScope.CreateScope(
+                               $"private {service.InterfaceType.ToDisplayString()} {GetFactoryMethodName(service)}()"))
                     {
-                        DisposeType.Async => "AddAsyncDisposable(",
-                        DisposeType.Sync => "AddDisposable(",
-                        _ => "",
-                    };
-                    var disposableSuffix = service.DisposeType switch
-                    {
-                        DisposeType.None => "",
-                        _ => ")",
-                    };
-                    if (service.ConstructorArguments.Length > 0)
-                    {
-                        methodScope.WriteLine($"return {disposablePrefix}new {service.ImplementationType.ToDisplayString()}(");
-                        var parameters = service.ConstructorArguments.Select((parameter, i) =>
-                            $"    {GetFactoryMethodName(parameter)}(){(i == service.ConstructorArguments.Length - 1 ? "" : ",")}");
-                        foreach (var parameter in parameters)
-                            methodScope.WriteLine(parameter);
-                        methodScope.WriteLine($"){disposableSuffix};");
+                        var disposablePrefix = service.DisposeType switch
+                        {
+                            DisposeType.Async => "AddAsyncDisposable(",
+                            DisposeType.Sync => "AddDisposable(",
+                            _ => "",
+                        };
+                        var disposableSuffix = service.DisposeType switch
+                        {
+                            DisposeType.None => "",
+                            _ => ")",
+                        };
+                        if (service.ConstructorArguments.Length > 0)
+                        {
+                            methodScope.WriteLine(
+                                $"return {disposablePrefix}new {service.ImplementationType.ToDisplayString()}(");
+                            var parameters = service.ConstructorArguments.Select((parameter, i) =>
+                                $"    {GetResolutionMethodName(parameter)}(){(i == service.ConstructorArguments.Length - 1 ? "" : ",")}");
+                            foreach (var parameter in parameters)
+                                methodScope.WriteLine(parameter);
+                            methodScope.WriteLine($"){disposableSuffix};");
+                        }
+                        else
+                            methodScope.WriteLine(
+                                $"return {disposablePrefix}new {service.ImplementationType.ToDisplayString()}(){disposableSuffix};");
                     }
-                    else
-                        methodScope.WriteLine($"return {disposablePrefix}new {service.ImplementationType.ToDisplayString()}(){disposableSuffix};");
+                    if (service.Lifetime == ServiceLifetime.Singleton)
+                    {
+                        using var methodScope = classScope.CreateScope(
+                            $"private {service.InterfaceType.ToDisplayString()} {GetResolutionMethodName(service.InterfaceType)}()");
+                        methodScope.WriteLine($"return {GetServiceFieldName(service.InterfaceType)}.Value;");
+                    }
                 }
             }
         }
         return writer.ToString();
     }
 
-    private string GetFactoryMethodName(INamedTypeSymbol namedTypeSymbol)
+    private string GetFactoryMethodName(InjectableService service)
     {
-        return $"Create{namedTypeSymbol.ToDisplayString().Replace(".", "_")}";
+        if (service.Lifetime == ServiceLifetime.Singleton)
+            return $"Create{service.InterfaceType.ToDisplayString().Replace(".", "_")}";
+        return GetResolutionMethodName(service.InterfaceType);
+    }
+    private string GetResolutionMethodName(INamedTypeSymbol namedTypeSymbol)
+    {
+        return $"Get{namedTypeSymbol.ToDisplayString().Replace(".", "_")}";
+    }
+
+    private static string GetServiceFieldName(INamedTypeSymbol namedTypeSymbol)
+    {
+        return "_" + namedTypeSymbol.ToDisplayString().Replace(".", "_");
     }
 
     private static void WriteGeneratedCodeAttribute(ICodeWriterScope scope)
