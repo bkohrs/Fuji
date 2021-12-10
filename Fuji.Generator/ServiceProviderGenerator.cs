@@ -14,41 +14,52 @@ public class ServiceProviderGenerator : IIncrementalGenerator
             return;
 
         var serviceProviderAttributeType = compilation.GetRequiredTypeByMetadataName(AttributeNames.ServiceProvider);
+        var serviceCollectionBuilderAttributeType = compilation.GetRequiredTypeByMetadataName(AttributeNames.ServiceCollectionBuilder);
         var provideTransientAttribute = compilation.GetRequiredTypeByMetadataName(AttributeNames.ProvideTransient);
         var provideAttributes = ImmutableArray.Create(provideTransientAttribute);
-
         var distinctTypes = typeDeclarationSyntaxes
             .Where(typeSyntax => typeSyntax is not null)
             .Cast<TypeDeclarationSyntax>()
             .Distinct()
             .ToImmutableArray();
 
-        foreach (var serviceProviderType in distinctTypes)
-        {
-            var model = compilation.GetSemanticModel(serviceProviderType.SyntaxTree);
-            var serviceProviderSymbol = model.GetDeclaredSymbol(serviceProviderType) as INamedTypeSymbol;
-            if (serviceProviderSymbol == null)
-                continue;
-            var attributes = serviceProviderSymbol.GetAttributes();
-            var serviceProviderAttribute = attributes.FirstOrDefault(attribute =>
-                SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, serviceProviderAttributeType));
-            var injectionCandidates =
-                GetInjectionCandidates(serviceProviderSymbol, provideAttributes);
-            var injectableServices = GetInjectableServices(injectionCandidates);
-            var definition = new ServiceProviderDefinition(serviceProviderSymbol, injectableServices,
-                serviceProviderAttribute?.NamedArguments.Where(arg => arg.Key == "DebugOutputPath")
-                    .Select(arg => arg.Value.Value).FirstOrDefault() as string);
+        var partitionedTypes = ResolveTypes(compilation, distinctTypes,
+                ImmutableArray.Create(serviceProviderAttributeType, serviceCollectionBuilderAttributeType))
+            .ToLookup(type => type.Attribute.AttributeClass, SymbolEqualityComparer.Default);
 
-            var fileContent = new SourceCodeGenerator(definition).GenerateServiceProvider();
-            var fileName = $"{definition.ServiceProviderType.ToDisplayString()}.generated.cs";
-            if (!string.IsNullOrWhiteSpace(definition.DebugOutputPath))
-            {
-                if (!Directory.Exists(definition.DebugOutputPath))
-                    Directory.CreateDirectory(definition.DebugOutputPath);
-                File.WriteAllText(Path.Combine(definition.DebugOutputPath, fileName), fileContent);
-            }
-            sourceProductionContext.AddSource(fileName, fileContent);
+        foreach (var provider in partitionedTypes[serviceProviderAttributeType])
+        {
+            GenerateCode(sourceProductionContext, provider, provideAttributes,
+                definition => new SourceCodeGenerator(definition).GenerateServiceProvider());
         }
+        foreach (var provider in partitionedTypes[serviceCollectionBuilderAttributeType])
+        {
+            GenerateCode(sourceProductionContext, provider, provideAttributes,
+                definition => new SourceCodeGenerator(definition).GenerateServiceCollectionBuilder());
+        }
+    }
+
+    private void GenerateCode(SourceProductionContext sourceProductionContext, AttributedSymbol provider,
+        ImmutableArray<INamedTypeSymbol> provideAttributes, Func<ServiceProviderDefinition, string> generateContent)
+    {
+        var injectionCandidates =
+            GetInjectionCandidates(provider.Symbol, provideAttributes);
+        var injectableServices = GetInjectableServices(injectionCandidates);
+        var debugOutputPath =
+            provider.Attribute.NamedArguments.Where(arg => arg.Key == "DebugOutputPath")
+                .Select(arg => arg.Value.Value).FirstOrDefault() as string;
+        var definition = new ServiceProviderDefinition(provider.Symbol, injectableServices,
+            debugOutputPath);
+
+        var fileContent = generateContent(definition);
+        var fileName = $"{definition.ServiceProviderType.ToDisplayString()}.generated.cs";
+        if (!string.IsNullOrWhiteSpace(definition.DebugOutputPath))
+        {
+            if (!Directory.Exists(definition.DebugOutputPath))
+                Directory.CreateDirectory(definition.DebugOutputPath);
+            File.WriteAllText(Path.Combine(definition.DebugOutputPath, fileName), fileContent);
+        }
+        sourceProductionContext.AddSource(fileName, fileContent);
     }
 
     private ImmutableArray<InjectableService> GetInjectableServices(
@@ -125,8 +136,9 @@ public class ServiceProviderGenerator : IIncrementalGenerator
                         {
                             var attributeTypeSymbol = generatorSyntaxContext.SemanticModel
                                 .GetSymbolInfo(attributeSyntax).Symbol?.ContainingType;
-                            if (attributeTypeSymbol != null &&
-                                attributeTypeSymbol.ToDisplayString() == AttributeNames.ServiceProvider)
+                            var attributeDisplayName = attributeTypeSymbol?.ToDisplayString();
+                            if (attributeDisplayName == AttributeNames.ServiceProvider ||
+                                attributeDisplayName == AttributeNames.ServiceCollectionBuilder)
                             {
                                 return typeDeclarationSyntax;
                             }
@@ -140,9 +152,34 @@ public class ServiceProviderGenerator : IIncrementalGenerator
             Generate(sourceProductionContext, tuple.Item1, tuple.Item2));
     }
 
+    private ImmutableArray<AttributedSymbol> ResolveTypes(
+        Compilation compilation,
+        ImmutableArray<TypeDeclarationSyntax> typeDeclarationSyntaxes,
+        ImmutableArray<INamedTypeSymbol> attributeTypeSymbols)
+    {
+        return typeDeclarationSyntaxes.Select<TypeDeclarationSyntax, AttributedSymbol?>(type =>
+            {
+                var model = compilation.GetSemanticModel(type.SyntaxTree);
+                var symbol = model.GetDeclaredSymbol(type) as INamedTypeSymbol;
+                if (symbol == null)
+                    return null;
+                var attributes = symbol.GetAttributes();
+                var attributeData = attributes.FirstOrDefault(attribute => attributeTypeSymbols.Any(
+                    attributeTypeSymbol =>
+                        SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, attributeTypeSymbol)));
+                if (attributeData == null)
+                    return null;
+                return new AttributedSymbol(symbol, attributeData);
+            })
+            .Where(symbol => symbol is not null)
+            .Cast<AttributedSymbol>()
+            .ToImmutableArray();
+    }
+
     private static class AttributeNames
     {
         public const string ProvideTransient = "Fuji.ProvideTransientAttribute";
+        public const string ServiceCollectionBuilder = "Fuji.ServiceCollectionBuilderAttribute";
         public const string ServiceProvider = "Fuji.ServiceProviderAttribute";
     }
 }

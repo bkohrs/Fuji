@@ -9,7 +9,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="Fuji.Generator" Version="0.0.1-alpha" />
+      <PackageReference Include="Fuji.Generator" Version="0.0.2-alpha" />
       <PackageReference Include="JetBrains.Annotations" Version="2021.3.0" />
       <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="6.0.0" />
     </ItemGroup>

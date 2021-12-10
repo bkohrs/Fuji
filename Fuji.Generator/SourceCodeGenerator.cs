@@ -18,6 +18,30 @@ public class SourceCodeGenerator
         _definition = definition;
     }
 
+    public string GenerateServiceCollectionBuilder()
+    {
+        var writer = new CodeWriter();
+        writer.WriteLine("#nullable enable");
+        writer.WriteLine("using Microsoft.Extensions.DependencyInjection;");
+        writer.WriteLine("");
+        using (var namespaceScope =
+               writer.CreateScope($"namespace {_definition.ServiceProviderType.ContainingNamespace}"))
+        {
+            WriteGeneratedCodeAttribute(namespaceScope);
+            using (var classScope =
+                   namespaceScope.CreateScope($"public partial class {_definition.ServiceProviderType.Name}"))
+            {
+                using (var methodScope =
+                       classScope.CreateScope("public void Build(IServiceCollection serviceCollection)"))
+                {
+                    foreach (var service in _definition.ProvidedServices)
+                        methodScope.WriteLine($"serviceCollection.AddTransient(typeof({service.InterfaceType.ToDisplayString()}), typeof({service.ImplementationType.ToDisplayString()}));");
+                }
+            }
+        }
+        return writer.ToString();
+    }
+
     public string GenerateServiceProvider()
     {
         var writer = new CodeWriter();
@@ -25,8 +49,7 @@ public class SourceCodeGenerator
         writer.WriteLine("");
         using (var namespaceScope = writer.CreateScope($"namespace {_definition.ServiceProviderType.ContainingNamespace}"))
         {
-            namespaceScope.WriteLine(
-                $"[System.CodeDom.Compiler.GeneratedCode(\"{AssemblyName.Name}\",\"{AssemblyName.Version}\")]");
+            WriteGeneratedCodeAttribute(namespaceScope);
             using (var classScope =
                    namespaceScope.CreateScope(
                        $"public partial class {_definition.ServiceProviderType.Name} : System.IServiceProvider"))
@@ -69,5 +92,11 @@ public class SourceCodeGenerator
     private string GetFactoryMethodName(INamedTypeSymbol namedTypeSymbol)
     {
         return $"Create{namedTypeSymbol.ToDisplayString().Replace(".", "_")}";
+    }
+
+    private static void WriteGeneratedCodeAttribute(ICodeWriterScope scope)
+    {
+        scope.WriteLine(
+            $"[System.CodeDom.Compiler.GeneratedCode(\"{AssemblyName.Name}\",\"{AssemblyName.Version}\")]");
     }
 }
