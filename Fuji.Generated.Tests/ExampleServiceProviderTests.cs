@@ -37,4 +37,30 @@ public class ExampleServiceProviderTests
         Assert.That(service2, Is.Not.Null);
         Assert.That(service2, Is.Not.SameAs(service1));
     }
+
+    [Test]
+    public async Task TransientDisposableService_IsDisposedWhenProviderIsDisposed()
+    {
+        var provider = new ExampleServiceProvider();
+        var disposable1 = provider.GetService<TransientDisposableService>();
+        var disposable2 = provider.GetService<TransientDisposableService>();
+
+        await provider.DisposeAsync().ConfigureAwait(false);
+
+        Assert.That(disposable1?.IsDisposed, Is.True);
+        Assert.That(disposable2?.IsDisposed, Is.True);
+    }
+
+    [Test]
+    public async Task TransientAsyncDisposableService_IsDisposedWhenProviderIsDisposed()
+    {
+        var provider = new ExampleServiceProvider();
+        var disposable1 = provider.GetService<TransientAsyncDisposableService>();
+        var disposable2 = provider.GetService<TransientAsyncDisposableService>();
+
+        await provider.DisposeAsync().ConfigureAwait(false);
+
+        Assert.That(disposable1?.IsDisposed, Is.True);
+        Assert.That(disposable2?.IsDisposed, Is.True);
+    }
 }

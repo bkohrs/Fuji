@@ -13,6 +13,8 @@ public class ServiceProviderGenerator : IIncrementalGenerator
         if (typeDeclarationSyntaxes.IsDefaultOrEmpty)
             return;
 
+        var asyncDisposableSymbol = compilation.GetRequiredTypeByMetadataName("System.IAsyncDisposable");
+        var disposableSymbol = compilation.GetRequiredTypeByMetadataName("System.IDisposable");
         var serviceProviderAttributeType = compilation.GetRequiredTypeByMetadataName(AttributeNames.ServiceProvider);
         var serviceCollectionBuilderAttributeType = compilation.GetRequiredTypeByMetadataName(AttributeNames.ServiceCollectionBuilder);
         var provideTransientAttribute = compilation.GetRequiredTypeByMetadataName(AttributeNames.ProvideTransient);
@@ -30,21 +32,25 @@ public class ServiceProviderGenerator : IIncrementalGenerator
         foreach (var provider in partitionedTypes[serviceProviderAttributeType])
         {
             GenerateCode(sourceProductionContext, provider, provideAttributes,
+                asyncDisposableSymbol, disposableSymbol,
                 definition => new SourceCodeGenerator(definition).GenerateServiceProvider());
         }
         foreach (var provider in partitionedTypes[serviceCollectionBuilderAttributeType])
         {
             GenerateCode(sourceProductionContext, provider, provideAttributes,
+                asyncDisposableSymbol, disposableSymbol,
                 definition => new SourceCodeGenerator(definition).GenerateServiceCollectionBuilder());
         }
     }
 
     private void GenerateCode(SourceProductionContext sourceProductionContext, AttributedSymbol provider,
-        ImmutableArray<INamedTypeSymbol> provideAttributes, Func<ServiceProviderDefinition, string> generateContent)
+        ImmutableArray<INamedTypeSymbol> provideAttributes,
+        INamedTypeSymbol asyncDisposableSymbol, INamedTypeSymbol disposableSymbol,
+        Func<ServiceProviderDefinition, string> generateContent)
     {
         var injectionCandidates =
             GetInjectionCandidates(provider.Symbol, provideAttributes);
-        var injectableServices = GetInjectableServices(injectionCandidates);
+        var injectableServices = GetInjectableServices(injectionCandidates, asyncDisposableSymbol, disposableSymbol);
         var debugOutputPath =
             provider.Attribute.NamedArguments.Where(arg => arg.Key == "DebugOutputPath")
                 .Select(arg => arg.Value.Value).FirstOrDefault() as string;
@@ -63,7 +69,8 @@ public class ServiceProviderGenerator : IIncrementalGenerator
     }
 
     private ImmutableArray<InjectableService> GetInjectableServices(
-        ImmutableArray<InjectionCandidate> injectionCandidates)
+        ImmutableArray<InjectionCandidate> injectionCandidates, INamedTypeSymbol asyncDisposableSymbol,
+        INamedTypeSymbol disposableSymbol)
     {
         var validServices = injectionCandidates
             .Select(candidate => candidate.InterfaceType)
@@ -76,10 +83,22 @@ public class ServiceProviderGenerator : IIncrementalGenerator
                     .FirstOrDefault(ctor =>
                         ctor.Parameters.All(parameter => validServices.Contains(parameter.Type)));
 
+                var disposeType = DisposeType.None;
+                if (candidate.ImplementationType.AllInterfaces.Any(symbol =>
+                        SymbolEqualityComparer.Default.Equals(symbol, asyncDisposableSymbol)))
+                {
+                    disposeType = DisposeType.Async;
+                }
+                else if (candidate.ImplementationType.AllInterfaces.Any(symbol =>
+                             SymbolEqualityComparer.Default.Equals(symbol, disposableSymbol)))
+                {
+                    disposeType = DisposeType.Sync;
+                }
                 return constructor != null
-                    ? new InjectableService(candidate.InterfaceType, candidate.ImplementationType,
+                    ? new InjectableService(
+                        candidate.InterfaceType, candidate.ImplementationType,
                         constructor.Parameters.Select(parameter => parameter.Type).Cast<INamedTypeSymbol>()
-                            .ToImmutableArray())
+                            .ToImmutableArray(), disposeType)
                     : null;
             })
             .Where(service => service is not null)

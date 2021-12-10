@@ -6,4 +6,5 @@ namespace Fuji;
 public record struct InjectableService(
     INamedTypeSymbol InterfaceType,
     INamedTypeSymbol ImplementationType,
-    ImmutableArray<INamedTypeSymbol> ConstructorArguments);
+    ImmutableArray<INamedTypeSymbol> ConstructorArguments,
+    DisposeType DisposeType);
