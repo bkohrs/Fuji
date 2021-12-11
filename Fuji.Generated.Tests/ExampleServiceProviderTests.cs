@@ -291,6 +291,7 @@ public class ExampleServiceProviderTests
         var service = _provider?.GetService<SelfProvidedService>();
         Assert.That(service, Is.Not.Null);
     }
+
     [Test]
     public void DependentLibraryService()
     {
@@ -305,5 +306,21 @@ public class ExampleServiceProviderTests
         Assert.That(service, Is.Not.Null);
         var dependencyService = _provider?.GetService<SelfDescribedDependentLibraryService>();
         Assert.That(dependencyService, Is.Not.Null);
+    }
+
+    [Test]
+    public void FactoryProvidedSingleton()
+    {
+        var service = _provider?.GetService<FactoryProvidedSingleton>();
+        Assert.That(service, Is.Not.Null);
+        Assert.That(service?.FactoryProvided, Is.True);
+    }
+
+    [Test]
+    public void FactoryPrecedenceService()
+    {
+        var service = _provider?.GetService<ISelfDescribedPrecedenceService>();
+        Assert.That(service, Is.Not.Null);
+        Assert.That(service, Is.TypeOf<CustomPrecedenceService>());
     }
 }

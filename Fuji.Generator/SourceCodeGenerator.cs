@@ -43,8 +43,20 @@ public class SourceCodeGenerator
                                     $"serviceCollection.AddTransient(typeof({service.InterfaceType.ToDisplayString()}), typeof({service.ImplementationType.ToDisplayString()}));");
                                 break;
                             case ServiceLifetime.Singleton:
-                                methodScope.WriteLine(
-                                    $"serviceCollection.AddSingleton(typeof({service.InterfaceType.ToDisplayString()}), typeof({service.ImplementationType.ToDisplayString()}));");
+                                if (service.CustomFactory != null)
+                                {
+                                    var usesProvider =
+                                        service.CustomFactory.Parameters.Length == 1 &&
+                                        service.CustomFactory.Parameters[0].Type is INamedTypeSymbol paramSymbol &&
+                                        paramSymbol.ToDisplayString() == "System.IServiceProvider";
+                                    methodScope.WriteLine(
+                                        $"serviceCollection.AddSingleton<{service.InterfaceType.ToDisplayString()}>(provider => {service.CustomFactory.Name}({(usesProvider ? "provider" : "")}));");
+                                }
+                                else
+                                {
+                                    methodScope.WriteLine(
+                                        $"serviceCollection.AddSingleton(typeof({service.InterfaceType.ToDisplayString()}), typeof({service.ImplementationType.ToDisplayString()}));");
+                                }
                                 break;
                             case ServiceLifetime.Scoped:
                                 methodScope.WriteLine(
@@ -144,6 +156,8 @@ public class SourceCodeGenerator
 
     private string GetFactoryMethodName(InjectableService service)
     {
+        if (service.CustomFactory != null)
+            return service.CustomFactory.Name;
         if (service.Lifetime != ServiceLifetime.Transient)
             return $"Create{service.InterfaceType.ToDisplayString().Replace(".", "_")}";
         return GetResolutionMethodName(service.InterfaceType);
@@ -219,6 +233,9 @@ public class SourceCodeGenerator
 
     private void WriteServiceFactoryMethod(ICodeWriterScope scope, InjectableService service)
     {
+        if (service.CustomFactory != null)
+            return;
+
         using var methodScope = scope.CreateScope(
             $"private {service.InterfaceType.ToDisplayString()} {GetFactoryMethodName(service)}()");
         var disposablePrefix = service.DisposeType switch

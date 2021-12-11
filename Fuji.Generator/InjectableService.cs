@@ -8,4 +8,5 @@ public record struct InjectableService(
     INamedTypeSymbol ImplementationType,
     ServiceLifetime Lifetime,
     ImmutableArray<INamedTypeSymbol> ConstructorArguments,
-    DisposeType DisposeType);
+    DisposeType DisposeType,
+    IMethodSymbol? CustomFactory);

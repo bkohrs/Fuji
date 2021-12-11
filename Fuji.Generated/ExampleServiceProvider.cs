@@ -15,9 +15,23 @@ namespace Fuji.Generated;
 [ProvideSingleton(typeof(ISingletonService), typeof(SingletonService))]
 [ProvideSingleton(typeof(SingletonDisposableService))]
 [ProvideSingleton(typeof(SingletonAsyncDisposableService))]
+[ProvideSingleton(typeof(FactoryProvidedSingleton), Factory = nameof(CreateFactoryProvidedSingleton))]
+[ProvideSingleton(typeof(ISelfDescribedPrecedenceService), Factory = nameof(CreatePrecedenceService))]
 [ProvideScoped(typeof(IScopedService), typeof(ScopedService))]
 [ProvideScoped(typeof(ScopedAsyncDisposableService))]
 [ProvideScoped(typeof(ScopedDisposableService))]
 [ProvideScoped(typeof(ScopedServiceWithSingletonDependency))]
 [ProvideScoped(typeof(ScopedServiceWithTransientDependency))]
-public partial class ExampleServiceProvider {}
+public partial class ExampleServiceProvider
+{
+    private FactoryProvidedSingleton CreateFactoryProvidedSingleton()
+    {
+        return new FactoryProvidedSingleton(true);
+    }
+
+    private ISelfDescribedPrecedenceService CreatePrecedenceService()
+    {
+        return new CustomPrecedenceService();
+    }
+}
+

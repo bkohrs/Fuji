@@ -157,4 +157,20 @@ public class ExampleServiceCollectionBuilderTests
         var dependencyService = _provider?.GetService<SelfDescribedDependentLibraryService>();
         Assert.That(dependencyService, Is.Not.Null);
     }
+
+    [Test]
+    public void FactoryProvidedSingleton()
+    {
+        var service = _provider?.GetService<FactoryProvidedSingleton>();
+        Assert.That(service, Is.Not.Null);
+        Assert.That(service?.FactoryProvided, Is.True);
+    }
+
+    [Test]
+    public void FactoryProvidedSingletonNeedingServiceProvider()
+    {
+        var service = _provider?.GetService<FactoryProvidedSingletonNeedingServiceProvider>();
+        Assert.That(service, Is.Not.Null);
+        Assert.That(service?.FactoryProvided, Is.True);
+    }
 }

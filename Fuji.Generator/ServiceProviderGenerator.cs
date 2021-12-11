@@ -14,7 +14,7 @@ public class ServiceProviderGenerator : IIncrementalGenerator
             type.Attribute.ConstructorArguments[0].Value is INamedTypeSymbol interfaceArg
                 ? interfaceArg
                 : type.Symbol;
-        return new InjectionCandidate(interfaceType, type.Symbol, serviceLifetime);
+        return new InjectionCandidate(interfaceType, type.Symbol, serviceLifetime, null);
     }
 
     private void Generate(SourceProductionContext sourceProductionContext, Compilation compilation,
@@ -113,6 +113,26 @@ public class ServiceProviderGenerator : IIncrementalGenerator
         sourceProductionContext.AddSource(fileName, fileContent);
     }
 
+    private ImmutableArray<INamedTypeSymbol> GetConstructorArguments(InjectionCandidate service,
+        ImmutableDictionary<ISymbol, InjectionCandidate> validServices)
+    {
+        if (service.CustomFactory != null)
+            return ImmutableArray<INamedTypeSymbol>.Empty;
+        var constructor = service.ImplementationType.Constructors
+            .OrderByDescending(ctor => ctor.Parameters.Length)
+            .FirstOrDefault(ctor =>
+                ctor.Parameters.All(parameter => validServices.ContainsKey(parameter.Type)));
+        if (constructor == null)
+        {
+            throw new ArgumentException(
+                $"No valid constructor found for {service.ImplementationType.ToDisplayString()}");
+        }
+        return constructor.Parameters
+            .Select(parameter => parameter.Type)
+            .Cast<INamedTypeSymbol>()
+            .ToImmutableArray();
+    }
+
     private ImmutableArray<InjectableService> GetInjectableServices(
         ImmutableArray<InjectionCandidate> injectionCandidates, INamedTypeSymbol asyncDisposableSymbol,
         INamedTypeSymbol disposableSymbol, IEnumerable<InjectionCandidate> selfDescribedServices)
@@ -126,12 +146,6 @@ public class ServiceProviderGenerator : IIncrementalGenerator
             var service = services.Dequeue();
             if (identifiedServices.ContainsKey(service.InterfaceType))
                 continue;
-            var constructor = service.ImplementationType.Constructors
-                .OrderByDescending(ctor => ctor.Parameters.Length)
-                .FirstOrDefault(ctor =>
-                    ctor.Parameters.All(parameter => validServices.ContainsKey(parameter.Type)));
-            if (constructor == null)
-                continue;
             var disposeType = DisposeType.None;
             if (service.ImplementationType.AllInterfaces.Any(symbol =>
                     SymbolEqualityComparer.Default.Equals(symbol, asyncDisposableSymbol)))
@@ -143,12 +157,9 @@ public class ServiceProviderGenerator : IIncrementalGenerator
             {
                 disposeType = DisposeType.Sync;
             }
-            var constructorArguments = constructor.Parameters
-                .Select(parameter => parameter.Type)
-                .Cast<INamedTypeSymbol>()
-                .ToImmutableArray();
+            var constructorArguments = GetConstructorArguments(service, validServices);
             identifiedServices[service.InterfaceType] = new InjectableService(service.InterfaceType,
-                service.ImplementationType, service.Lifetime, constructorArguments, disposeType);
+                service.ImplementationType, service.Lifetime, constructorArguments, disposeType, service.CustomFactory);
             foreach (var argument in constructorArguments)
             {
                 if (identifiedServices.ContainsKey(argument))
@@ -172,6 +183,12 @@ public class ServiceProviderGenerator : IIncrementalGenerator
                             SymbolEqualityComparer.Default.Equals(provideAttribute.AttributeClass, attr.Symbol))
                         .Select(attr => (ServiceLifetime?)attr.Lifetime)
                         .FirstOrDefault();
+
+                    var customFactory = provideAttribute.NamedArguments.Where(arg => arg.Key == "Factory")
+                        .Select(arg => arg.Value.Value as string).FirstOrDefault();
+                    var customFactoryMethod = !string.IsNullOrWhiteSpace(customFactory)
+                        ? type.GetMembers(customFactory!).FirstOrDefault() as IMethodSymbol
+                        : null;
                     var interfaceType =
                         provideAttribute.ConstructorArguments.Length > 0 &&
                         provideAttribute.ConstructorArguments[0].Value is INamedTypeSymbol interfaceArg
@@ -179,11 +196,12 @@ public class ServiceProviderGenerator : IIncrementalGenerator
                             : null;
                     var implementationType =
                         provideAttribute.ConstructorArguments.Length > 1 &&
+                        !provideAttribute.ConstructorArguments[1].IsNull &&
                         provideAttribute.ConstructorArguments[1].Value is INamedTypeSymbol implementationArg
                             ? implementationArg
                             : interfaceType;
                     return lifetime != null && interfaceType != null && implementationType != null
-                        ? new InjectionCandidate(interfaceType, implementationType, lifetime.Value)
+                        ? new InjectionCandidate(interfaceType, implementationType, lifetime.Value, customFactoryMethod)
                         : null;
                 })
             .Where(candidate => candidate is not null)
