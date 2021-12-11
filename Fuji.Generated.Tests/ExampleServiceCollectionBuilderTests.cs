@@ -78,4 +78,59 @@ public class ExampleServiceCollectionBuilderTests
         }
         Assert.That(service?.IsDisposed, Is.True);
     }
+
+    [Test]
+    public void SelfDescribedTransientService()
+    {
+        var service1 = _provider?.GetService<SelfDescribedTransientService>();
+        Assert.That(service1, Is.Not.Null);
+
+        var service2 = _provider?.GetService<SelfDescribedTransientService>();
+        Assert.That(service2, Is.Not.Null);
+        Assert.That(service2, Is.Not.SameAs(service1));
+    }
+
+    [Test]
+    public void SelfDescribedSingletonService()
+    {
+        var service1 = _provider?.GetService<SelfDescribedSingletonService>();
+        Assert.That(service1, Is.Not.Null);
+
+        var service2 = _provider?.GetService<SelfDescribedSingletonService>();
+        Assert.That(service2, Is.Not.Null);
+        Assert.That(service2, Is.SameAs(service1));
+    }
+
+    [Test]
+    public async Task SelfDescribedScopedService()
+    {
+        SelfDescribedScopedService? scope1Service1;
+        SelfDescribedScopedService? scope2Service1;
+        await using (var scope1 = _provider?.CreateAsyncScope())
+        {
+            scope1Service1 = scope1?.ServiceProvider.GetService<SelfDescribedScopedService>();
+            Assert.That(scope1Service1, Is.Not.Null);
+
+            var scope1Service2 = scope1?.ServiceProvider.GetService<SelfDescribedScopedService>();
+            Assert.That(scope1Service1, Is.Not.Null);
+            Assert.That(scope1Service1, Is.SameAs(scope1Service2));
+        }
+        await using (var scope2 = _provider?.CreateAsyncScope())
+        {
+            scope2Service1 = scope2?.ServiceProvider.GetService<SelfDescribedScopedService>();
+            Assert.That(scope2Service1, Is.Not.Null);
+
+            var scope2Service2 = scope2?.ServiceProvider.GetService<SelfDescribedScopedService>();
+            Assert.That(scope2Service1, Is.Not.Null);
+            Assert.That(scope2Service1, Is.SameAs(scope2Service2));
+        }
+        Assert.That(scope1Service1, Is.Not.SameAs(scope2Service1));
+    }
+
+    [Test]
+    public void ServiceDependsOnSelfDescribed()
+    {
+        var service = _provider?.GetService<ServiceDependsOnSelfDescribed>();
+        Assert.That(service, Is.Not.Null);
+    }
 }

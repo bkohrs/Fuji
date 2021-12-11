@@ -7,6 +7,16 @@ namespace Fuji;
 [Generator]
 public class ServiceProviderGenerator : IIncrementalGenerator
 {
+    private static InjectionCandidate? CreateSelfDescribedInjectionCandidate(AttributedSymbol type, ServiceLifetime serviceLifetime)
+    {
+        var interfaceType =
+            type.Attribute.ConstructorArguments.Length == 1 &&
+            type.Attribute.ConstructorArguments[0].Value is INamedTypeSymbol interfaceArg
+                ? interfaceArg
+                : type.Symbol;
+        return new InjectionCandidate(interfaceType, type.Symbol, serviceLifetime);
+    }
+
     private void Generate(SourceProductionContext sourceProductionContext, Compilation compilation,
         ImmutableArray<TypeDeclarationSyntax?> typeDeclarationSyntaxes)
     {
@@ -20,6 +30,9 @@ public class ServiceProviderGenerator : IIncrementalGenerator
         var provideTransientAttribute = compilation.GetRequiredTypeByMetadataName(AttributeNames.ProvideTransient);
         var provideSingletonAttribute = compilation.GetRequiredTypeByMetadataName(AttributeNames.ProvideSingleton);
         var provideScopedAttribute = compilation.GetRequiredTypeByMetadataName(AttributeNames.ProvideScoped);
+        var transientServiceAttribute = compilation.GetRequiredTypeByMetadataName(AttributeNames.TransientService);
+        var singletonServiceAttribute = compilation.GetRequiredTypeByMetadataName(AttributeNames.SingletonService);
+        var scopedServiceAttribute = compilation.GetRequiredTypeByMetadataName(AttributeNames.ScopedService);
         var provideAttributes = ImmutableArray.Create(
             (provideTransientAttribute, ServiceLifetime.Transient),
             (provideSingletonAttribute, ServiceLifetime.Singleton),
@@ -30,20 +43,38 @@ public class ServiceProviderGenerator : IIncrementalGenerator
             .Distinct()
             .ToImmutableArray();
 
-        var partitionedTypes = ResolveTypes(compilation, distinctTypes,
-                ImmutableArray.Create(serviceProviderAttributeType, serviceCollectionBuilderAttributeType))
+        var attributeTypeSymbols = ImmutableArray.Create(
+            serviceProviderAttributeType,
+            serviceCollectionBuilderAttributeType,
+            transientServiceAttribute,
+            singletonServiceAttribute,
+            scopedServiceAttribute);
+        var partitionedTypes = ResolveTypes(compilation, distinctTypes, attributeTypeSymbols)
             .ToLookup(type => type.Attribute.AttributeClass, SymbolEqualityComparer.Default);
+
+        var transientSelfDescribedServices = partitionedTypes[transientServiceAttribute]
+            .Select(type => CreateSelfDescribedInjectionCandidate(type, ServiceLifetime.Transient));
+        var singletonSelfDescribedServices = partitionedTypes[singletonServiceAttribute]
+            .Select(type => CreateSelfDescribedInjectionCandidate(type, ServiceLifetime.Singleton));
+        var scopedSelfDescribedServices = partitionedTypes[scopedServiceAttribute]
+            .Select(type => CreateSelfDescribedInjectionCandidate(type, ServiceLifetime.Scoped));
+        var selfDescribedServices = transientSelfDescribedServices
+            .Concat(singletonSelfDescribedServices)
+            .Concat(scopedSelfDescribedServices)
+            .Where(candidate => candidate is not null)
+            .Cast<InjectionCandidate>()
+            .ToImmutableArray();
 
         foreach (var provider in partitionedTypes[serviceProviderAttributeType])
         {
             GenerateCode(sourceProductionContext, provider, provideAttributes,
-                asyncDisposableSymbol, disposableSymbol,
+                asyncDisposableSymbol, disposableSymbol, selfDescribedServices,
                 definition => new SourceCodeGenerator(definition).GenerateServiceProvider());
         }
         foreach (var provider in partitionedTypes[serviceCollectionBuilderAttributeType])
         {
             GenerateCode(sourceProductionContext, provider, provideAttributes,
-                asyncDisposableSymbol, disposableSymbol,
+                asyncDisposableSymbol, disposableSymbol, selfDescribedServices,
                 definition => new SourceCodeGenerator(definition).GenerateServiceCollectionBuilder());
         }
     }
@@ -51,11 +82,13 @@ public class ServiceProviderGenerator : IIncrementalGenerator
     private void GenerateCode(SourceProductionContext sourceProductionContext, AttributedSymbol provider,
         ImmutableArray<(INamedTypeSymbol Symbol, ServiceLifetime Lifetime)> provideAttributes,
         INamedTypeSymbol asyncDisposableSymbol, INamedTypeSymbol disposableSymbol,
+        ImmutableArray<InjectionCandidate> selfDescribedServices,
         Func<ServiceProviderDefinition, string> generateContent)
     {
         var injectionCandidates =
             GetInjectionCandidates(provider.Symbol, provideAttributes);
-        var injectableServices = GetInjectableServices(injectionCandidates, asyncDisposableSymbol, disposableSymbol);
+        var injectableServices = GetInjectableServices(injectionCandidates, asyncDisposableSymbol, disposableSymbol,
+            selfDescribedServices);
         var debugOutputPath =
             provider.Attribute.NamedArguments.Where(arg => arg.Key == "DebugOutputPath")
                 .Select(arg => arg.Value.Value).FirstOrDefault() as string;
@@ -75,40 +108,48 @@ public class ServiceProviderGenerator : IIncrementalGenerator
 
     private ImmutableArray<InjectableService> GetInjectableServices(
         ImmutableArray<InjectionCandidate> injectionCandidates, INamedTypeSymbol asyncDisposableSymbol,
-        INamedTypeSymbol disposableSymbol)
+        INamedTypeSymbol disposableSymbol, IEnumerable<InjectionCandidate> selfDescribedServices)
     {
-        var validServices = injectionCandidates
-            .Select(candidate => candidate.InterfaceType)
-            .ToImmutableHashSet(SymbolEqualityComparer.Default);
-        return injectionCandidates
-            .Select<InjectionCandidate, InjectableService?>(candidate =>
+        var identifiedServices = new Dictionary<ISymbol, InjectableService>(SymbolEqualityComparer.Default);
+        var validServices = injectionCandidates.Concat(selfDescribedServices)
+            .ToImmutableDictionary<InjectionCandidate, ISymbol>(candidate => candidate.InterfaceType, SymbolEqualityComparer.Default);
+        var services = new Queue<InjectionCandidate>(injectionCandidates);
+        while (services.Count > 0)
+        {
+            var service = services.Dequeue();
+            if (identifiedServices.ContainsKey(service.InterfaceType))
+                continue;
+            var constructor = service.ImplementationType.Constructors
+                .OrderByDescending(ctor => ctor.Parameters.Length)
+                .FirstOrDefault(ctor =>
+                    ctor.Parameters.All(parameter => validServices.ContainsKey(parameter.Type)));
+            if (constructor == null)
+                continue;
+            var disposeType = DisposeType.None;
+            if (service.ImplementationType.AllInterfaces.Any(symbol =>
+                    SymbolEqualityComparer.Default.Equals(symbol, asyncDisposableSymbol)))
             {
-                var constructor = candidate.ImplementationType.Constructors
-                    .OrderByDescending(ctor => ctor.Parameters.Length)
-                    .FirstOrDefault(ctor =>
-                        ctor.Parameters.All(parameter => validServices.Contains(parameter.Type)));
-
-                var disposeType = DisposeType.None;
-                if (candidate.ImplementationType.AllInterfaces.Any(symbol =>
-                        SymbolEqualityComparer.Default.Equals(symbol, asyncDisposableSymbol)))
-                {
-                    disposeType = DisposeType.Async;
-                }
-                else if (candidate.ImplementationType.AllInterfaces.Any(symbol =>
-                             SymbolEqualityComparer.Default.Equals(symbol, disposableSymbol)))
-                {
-                    disposeType = DisposeType.Sync;
-                }
-                return constructor != null
-                    ? new InjectableService(
-                        candidate.InterfaceType, candidate.ImplementationType, candidate.Lifetime,
-                        constructor.Parameters.Select(parameter => parameter.Type).Cast<INamedTypeSymbol>()
-                            .ToImmutableArray(), disposeType)
-                    : null;
-            })
-            .Where(service => service is not null)
-            .Cast<InjectableService>()
-            .ToImmutableArray();
+                disposeType = DisposeType.Async;
+            }
+            else if (service.ImplementationType.AllInterfaces.Any(symbol =>
+                         SymbolEqualityComparer.Default.Equals(symbol, disposableSymbol)))
+            {
+                disposeType = DisposeType.Sync;
+            }
+            var constructorArguments = constructor.Parameters
+                .Select(parameter => parameter.Type)
+                .Cast<INamedTypeSymbol>()
+                .ToImmutableArray();
+            identifiedServices[service.InterfaceType] = new InjectableService(service.InterfaceType,
+                service.ImplementationType, service.Lifetime, constructorArguments, disposeType);
+            foreach (var argument in constructorArguments)
+            {
+                if (identifiedServices.ContainsKey(argument))
+                    continue;
+                services.Enqueue(validServices[argument]);
+            }
+        }
+        return identifiedServices.Values.ToImmutableArray();
     }
 
     private ImmutableArray<InjectionCandidate> GetInjectionCandidates(
@@ -165,7 +206,10 @@ public class ServiceProviderGenerator : IIncrementalGenerator
                                 .GetSymbolInfo(attributeSyntax).Symbol?.ContainingType;
                             var attributeDisplayName = attributeTypeSymbol?.ToDisplayString();
                             if (attributeDisplayName == AttributeNames.ServiceProvider ||
-                                attributeDisplayName == AttributeNames.ServiceCollectionBuilder)
+                                attributeDisplayName == AttributeNames.ServiceCollectionBuilder ||
+                                attributeDisplayName == AttributeNames.TransientService ||
+                                attributeDisplayName == AttributeNames.ScopedService ||
+                                attributeDisplayName == AttributeNames.SingletonService)
                             {
                                 return typeDeclarationSyntax;
                             }
@@ -208,7 +252,10 @@ public class ServiceProviderGenerator : IIncrementalGenerator
         public const string ProvideScoped = "Fuji.ProvideScopedAttribute";
         public const string ProvideSingleton = "Fuji.ProvideSingletonAttribute";
         public const string ProvideTransient = "Fuji.ProvideTransientAttribute";
+        public const string ScopedService = "Fuji.ScopedServiceAttribute";
         public const string ServiceCollectionBuilder = "Fuji.ServiceCollectionBuilderAttribute";
         public const string ServiceProvider = "Fuji.ServiceProviderAttribute";
+        public const string SingletonService = "Fuji.SingletonServiceAttribute";
+        public const string TransientService = "Fuji.TransientServiceAttribute";
     }
 }

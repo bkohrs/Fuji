@@ -7,6 +7,7 @@
 [ProvideTransient(typeof(TransientServiceWithScopedDependency))]
 [ProvideTransient(typeof(TransientDisposableService))]
 [ProvideTransient(typeof(TransientAsyncDisposableService))]
+[ProvideTransient(typeof(ServiceDependsOnSelfDescribed))]
 [ProvideSingleton(typeof(ISingletonService), typeof(SingletonService))]
 [ProvideSingleton(typeof(SingletonDisposableService))]
 [ProvideSingleton(typeof(SingletonAsyncDisposableService))]
