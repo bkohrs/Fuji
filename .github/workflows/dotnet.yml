@@ -21,6 +21,8 @@ jobs:
       run: dotnet pack Fuji.Core/Fuji.Core.csproj -o .
     - name: Pack Fuji.Generator
       run: dotnet pack Fuji.Generator/Fuji.Generator.csproj -o .
+    - name: List nuget sources
+      run: dotnet nuget list source
     - name: Add local nuget source
       run: dotnet nuget add source . -n Local
     - name: List nuget sources
