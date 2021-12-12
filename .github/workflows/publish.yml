@@ -12,10 +12,10 @@ jobs:
         with:
           dotnet-version: '6.0.x'
       - name: Pack Fuji.Core
-        run: dotnet pack Fuji.Core/Fuji.Core.csproj --configuration Release -o .
+        run: dotnet pack Fuji.Core/Fuji.Core.csproj --configuration Release -o $GITHUB_WORKSPACE
       - name: Pack Fuji.Generator
-        run: dotnet pack Fuji.Generator/Fuji.Generator.csproj --configuration Release -o .
+        run: dotnet pack Fuji.Generator/Fuji.Generator.csproj --configuration Release -o $GITHUB_WORKSPACE
       - name: Publish the packages to NuGet
         env:
           NUGET_AUTH_TOKEN: ${{secrets.NUGET_TOKEN}}
-        run: dotnet nuget push *.nupkg -s https://api.nuget.org/v3/index.json -k $NUGET_AUTH_TOKEN
+        run: dotnet nuget push $GITHUB_WORKSPACE/*.nupkg -s https://api.nuget.org/v3/index.json -k $NUGET_AUTH_TOKEN

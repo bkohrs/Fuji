@@ -18,16 +18,15 @@ jobs:
       with:
         dotnet-version: 6.0.x
     - name: Pack Fuji.Core
-      run: dotnet pack Fuji.Core/Fuji.Core.csproj -o .
+      run: dotnet pack Fuji.Core/Fuji.Core.csproj -o $GITHUB_WORKSPACE
     - name: Pack Fuji.Generator
-      run: dotnet pack Fuji.Generator/Fuji.Generator.csproj -o .
+      run: dotnet pack Fuji.Generator/Fuji.Generator.csproj -o $GITHUB_WORKSPACE
     - name: List nuget sources
       run: dotnet nuget list source
     - name: Add local nuget source
-      run: dotnet nuget add source . -n Local
+      run: dotnet nuget add source $GITHUB_WORKSPACE -n Local
     - name: List nuget sources
       run: dotnet nuget list source
-    - run: ls -ahl
     - name: Restore dependencies
       run: dotnet restore
     - name: Build
