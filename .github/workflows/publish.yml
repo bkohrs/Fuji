@@ -12,9 +12,9 @@ jobs:
         with:
           dotnet-version: '6.0.x'
       - name: Pack Fuji.Core
-        run: dotnet pack Fuji.Core\Fuji.Core.csproj --configuration Release -o .
+        run: dotnet pack Fuji.Core/Fuji.Core.csproj --configuration Release -o .
       - name: Pack Fuji.Generator
-        run: dotnet pack Fuji.Generator\Fuji.Generator.csproj --configuration Release -o .
+        run: dotnet pack Fuji.Generator/Fuji.Generator.csproj --configuration Release -o .
       - name: Publish the packages to NuGet
         env:
           NUGET_AUTH_TOKEN: ${{secrets.NUGET_TOKEN}}
