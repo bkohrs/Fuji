@@ -95,13 +95,16 @@ public class ServiceProviderGenerator : IIncrementalGenerator
         Func<ServiceProviderDefinition, string> generateContent)
     {
         var injectionCandidates =
-        GetInjectionCandidates(provider.Symbol, provideAttributes,
-            GetSelfProvidedServices(provider, selfDescribedServices, provideServiceAttribute));
+            GetInjectionCandidates(provider.Symbol, provideAttributes,
+                GetSelfProvidedServices(provider, selfDescribedServices, provideServiceAttribute));
         var providedByCollection = providedByCollectionAttribute != null
             ? GetProvidedByCollectionServices(provider, providedByCollectionAttribute)
             : Enumerable.Empty<INamedTypeSymbol>();
+        var includeAllServices =
+            Convert.ToBoolean(provider.Attribute.NamedArguments.Where(arg => arg.Key == "IncludeAllServices")
+                .Select(arg => arg.Value.Value).FirstOrDefault());
         var injectableServices = GetInjectableServices(injectionCandidates, asyncDisposableSymbol, disposableSymbol,
-            selfDescribedServices, providedByCollection);
+            selfDescribedServices, providedByCollection, includeAllServices);
         var debugOutputPath =
             provider.Attribute.NamedArguments.Where(arg => arg.Key == "DebugOutputPath")
                 .Select(arg => arg.Value.Value).FirstOrDefault() as string;
@@ -141,8 +144,8 @@ public class ServiceProviderGenerator : IIncrementalGenerator
 
     private ImmutableArray<InjectableService> GetInjectableServices(
         ImmutableArray<InjectionCandidate> injectionCandidates, INamedTypeSymbol asyncDisposableSymbol,
-        INamedTypeSymbol disposableSymbol, IEnumerable<InjectionCandidate> selfDescribedServices,
-        IEnumerable<INamedTypeSymbol> providedByCollection)
+        INamedTypeSymbol disposableSymbol, ImmutableArray<InjectionCandidate> selfDescribedServices,
+        IEnumerable<INamedTypeSymbol> providedByCollection, bool includeAllServices)
     {
         var identifiedServices = new Dictionary<ISymbol, InjectableService>(SymbolEqualityComparer.Default);
         var providedByCollectionHashSet = providedByCollection.ToImmutableHashSet(SymbolEqualityComparer.Default);
@@ -155,6 +158,11 @@ public class ServiceProviderGenerator : IIncrementalGenerator
         var validServices = injectionCandidates.Concat(selfDescribedServices)
             .ToImmutableDictionary<InjectionCandidate, ISymbol>(candidate => candidate.InterfaceType, SymbolEqualityComparer.Default);
         var services = new Queue<InjectionCandidate>(injectionCandidates);
+        if (includeAllServices)
+        {
+            foreach (var service in selfDescribedServices)
+                services.Enqueue(service);
+        }
         while (services.Count > 0)
         {
             var service = services.Dequeue();
