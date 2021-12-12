@@ -11,12 +11,10 @@ jobs:
       - uses: actions/setup-dotnet@v1
         with:
           dotnet-version: '6.0.x'
-      - name: Build the project
-        run: dotnet build --configuration Release
-      - name: Run tests
-        run: dotnet test --no-build --configuration Release
-      - name: Create the packages
-        run: dotnet pack --no-build --configuration Release -o .
+      - name: Pack Fuji.Core
+        run: dotnet pack Fuji.Core\Fuji.Core.csproj --configuration Release -o .
+      - name: Pack Fuji.Generator
+        run: dotnet pack Fuji.Generator\Fuji.Generator.csproj --configuration Release -o .
       - name: Publish the packages to NuGet
         env:
           NUGET_AUTH_TOKEN: ${{secrets.NUGET_TOKEN}}

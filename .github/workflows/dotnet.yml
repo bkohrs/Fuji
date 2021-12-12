@@ -17,6 +17,12 @@ jobs:
       uses: actions/setup-dotnet@v1
       with:
         dotnet-version: 6.0.x
+    - name: Pack Fuji.Core
+      run: dotnet pack Fuji.Core\Fuji.Core.csproj -o .
+    - name: Pack Fuji.Generator
+      run: dotnet pack Fuji.Generator\Fuji.Generator.csproj -o .
+    - name: Add local nuget source
+      run: dotnet nuget add source . -n Local
     - name: Restore dependencies
       run: dotnet restore
     - name: Build
