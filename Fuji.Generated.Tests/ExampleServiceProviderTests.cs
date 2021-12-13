@@ -323,4 +323,13 @@ public class ExampleServiceProviderTests
         Assert.That(service, Is.Not.Null);
         Assert.That(service, Is.TypeOf<CustomPrecedenceService>());
     }
+
+    [Test]
+    public void ImplementsIServiceProviderIsService()
+    {
+        if (_provider is IServiceProviderIsService isService)
+            Assert.That(isService.IsService(typeof(ITransientService)), Is.True);
+        else
+            Assert.Fail("Provider does not implement IServiceProviderIsService");
+    }
 }

@@ -80,7 +80,7 @@ public class SourceCodeGenerator
             WriteGeneratedCodeAttribute(namespaceScope);
             using (var classScope =
                    namespaceScope.CreateScope(
-                       $"public partial class {_definition.ServiceProviderType.Name} : System.IServiceProvider, Microsoft.Extensions.DependencyInjection.IServiceScopeFactory"))
+                       $"public partial class {_definition.ServiceProviderType.Name} : System.IServiceProvider, Microsoft.Extensions.DependencyInjection.IServiceScopeFactory,  Microsoft.Extensions.DependencyInjection.IServiceProviderIsService"))
             {
                 WriteDisposableCollections(classScope);
                 WriteFactoryDeclaration(classScope);
@@ -107,6 +107,10 @@ public class SourceCodeGenerator
                 using (var methodScope = classScope.CreateScope("public object? GetService(Type serviceType)"))
                 {
                     methodScope.WriteLine("return _factory.TryGetValue(serviceType, out var func) ? func() : null;");
+                }
+                using (var methodScope = classScope.CreateScope("public bool IsService(Type serviceType)"))
+                {
+                    methodScope.WriteLine("return _factory.ContainsKey(serviceType);");
                 }
 
                 foreach (var service in _definition.ProvidedServices)
