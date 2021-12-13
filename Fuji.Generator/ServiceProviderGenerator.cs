@@ -103,8 +103,13 @@ public class ServiceProviderGenerator : IIncrementalGenerator
         var includeAllServices =
             Convert.ToBoolean(provider.Attribute.NamedArguments.Where(arg => arg.Key == "IncludeAllServices")
                 .Select(arg => arg.Value.Value).FirstOrDefault());
-        var injectableServices = GetInjectableServices(injectionCandidates, asyncDisposableSymbol, disposableSymbol,
-            selfDescribedServices, providedByCollection, includeAllServices);
+        var diagnosticReporter = new DiagnosticReporter(sourceProductionContext);
+        var injectableServices = GetInjectableServices(diagnosticReporter, provider.Symbol, injectionCandidates,
+            asyncDisposableSymbol, disposableSymbol, selfDescribedServices, providedByCollection, includeAllServices);
+
+        if (diagnosticReporter.HasError)
+            return;
+
         var debugOutputPath =
             provider.Attribute.NamedArguments.Where(arg => arg.Key == "DebugOutputPath")
                 .Select(arg => arg.Value.Value).FirstOrDefault() as string;
@@ -122,8 +127,8 @@ public class ServiceProviderGenerator : IIncrementalGenerator
         sourceProductionContext.AddSource(fileName, fileContent);
     }
 
-    private ImmutableArray<INamedTypeSymbol> GetConstructorArguments(InjectionCandidate service,
-        Func<ITypeSymbol, bool> isValidService)
+    private ImmutableArray<INamedTypeSymbol> GetConstructorArguments(DiagnosticReporter diagnosticReporter,
+        ITypeSymbol providerType, InjectionCandidate service, Func<ITypeSymbol, bool> isValidService)
     {
         if (service.CustomFactory != null)
             return ImmutableArray<INamedTypeSymbol>.Empty;
@@ -133,8 +138,14 @@ public class ServiceProviderGenerator : IIncrementalGenerator
                 ctor.Parameters.All(parameter => isValidService(parameter.Type)));
         if (constructor == null)
         {
-            throw new ArgumentException(
-                $"No valid constructor found for {service.ImplementationType.ToDisplayString()}");
+            var targetConstructor = service.ImplementationType.Constructors
+                .OrderByDescending(ctor => ctor.Parameters.Length)
+                .First();
+            var missingTypes = targetConstructor.Parameters.Where(parameter => !isValidService(parameter.Type))
+                .Select(parameter => parameter.Type).ToImmutableArray();
+            diagnosticReporter.ReportMissingServices(providerType, service.ImplementationType, missingTypes,
+                targetConstructor.Locations.First());
+            return ImmutableArray<INamedTypeSymbol>.Empty;
         }
         return constructor.Parameters
             .Select(parameter => parameter.Type)
@@ -143,6 +154,7 @@ public class ServiceProviderGenerator : IIncrementalGenerator
     }
 
     private ImmutableArray<InjectableService> GetInjectableServices(
+        DiagnosticReporter diagnosticReporter, ITypeSymbol providerType,
         ImmutableArray<InjectionCandidate> injectionCandidates, INamedTypeSymbol asyncDisposableSymbol,
         INamedTypeSymbol disposableSymbol, ImmutableArray<InjectionCandidate> selfDescribedServices,
         IEnumerable<INamedTypeSymbol> providedByCollection, bool includeAllServices)
@@ -179,8 +191,8 @@ public class ServiceProviderGenerator : IIncrementalGenerator
             {
                 disposeType = DisposeType.Sync;
             }
-            var constructorArguments = GetConstructorArguments(service, type => providedByCollectionHashSet.Contains(type) ||
-                validServices.ContainsKey(type));
+            var constructorArguments = GetConstructorArguments(diagnosticReporter, providerType, service,
+                type => providedByCollectionHashSet.Contains(type) || validServices.ContainsKey(type));
             identifiedServices[service.InterfaceType] = new InjectableService(service.InterfaceType,
                 service.ImplementationType, service.Lifetime, constructorArguments, disposeType, service.CustomFactory);
             foreach (var argument in constructorArguments)
