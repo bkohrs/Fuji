@@ -1,0 +1,14 @@
+﻿{
+  Diagnostics: [
+    {
+      Id: PG0001,
+      Title: Missing required service,
+      Severity: Error,
+      WarningLevel: 0,
+      Location: : (4,11)-(4,19),
+      MessageFormat: Provide required services '{0}' for type '{1}' to generate '{2}',
+      Message: Provide required services 'Service2' for type 'Test.Service1' to generate 'Test.ServiceProvider',
+      Category: Usage
+    }
+  ]
+}

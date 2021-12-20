@@ -10,6 +10,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fuji.Generated.Tests", "Fuj
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fuji.Generated.Services", "Fuji.Generated.Services\Fuji.Generated.Services.csproj", "{A98BCEFC-2920-4480-9B4B-85FA462C87BA}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fuji.Generator.Tests", "Fuji.Generator.Tests\Fuji.Generator.Tests.csproj", "{25F7B51A-2D91-4CF5-ADFA-B7EC87CA5D80}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -36,5 +38,9 @@ Global
 		{A98BCEFC-2920-4480-9B4B-85FA462C87BA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A98BCEFC-2920-4480-9B4B-85FA462C87BA}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A98BCEFC-2920-4480-9B4B-85FA462C87BA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{25F7B51A-2D91-4CF5-ADFA-B7EC87CA5D80}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{25F7B51A-2D91-4CF5-ADFA-B7EC87CA5D80}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{25F7B51A-2D91-4CF5-ADFA-B7EC87CA5D80}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{25F7B51A-2D91-4CF5-ADFA-B7EC87CA5D80}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
