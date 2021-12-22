@@ -1,4 +1,5 @@
-﻿using Fuji.Generated.Services;
+﻿using System.Collections.Immutable;
+using Fuji.Generated.Services;
 using Microsoft.Extensions.DependencyInjection;
 using NUnit.Framework;
 
@@ -180,5 +181,17 @@ public class ExampleServiceCollectionBuilderTests
     {
         var service = _provider?.GetService<ServiceDependentOnCollectionProvided>();
         Assert.That(service, Is.Not.Null);
+    }
+
+    [Test]
+    public void MultipleImplementationService()
+    {
+        var service = _provider?.GetService<IMultipleImplementationService>();
+        Assert.That(service, Is.Not.Null);
+        Assert.That(service, Is.TypeOf<MultipleImplementationService2>());
+
+        var services = _provider?.GetServices<IMultipleImplementationService>()?.ToImmutableArray();
+        Assert.That(services?.OfType<MultipleImplementationService1>().Count(), Is.EqualTo(1));
+        Assert.That(services?.OfType<MultipleImplementationService2>().Count(), Is.EqualTo(1));
     }
 }
