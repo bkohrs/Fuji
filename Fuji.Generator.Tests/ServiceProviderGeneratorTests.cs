@@ -335,6 +335,88 @@ public partial class ServiceProvider {}
 ").ConfigureAwait(false);
     }
 
+    [Test]
+    public async Task ServiceCollectionBuilder_MultipleServicesWithSameInterface_Priority()
+    {
+        await RunGenerator(@"
+namespace Test;
+
+public class IService {}
+public class Service1 : IService {}
+public class Service2 : IService {}
+public class Service3 : IService {}
+
+[Fuji.ServiceCollectionBuilder]
+[Fuji.ProvideTransient(typeof(IService), typeof(Service1), Priority = 1)]
+[Fuji.ProvideTransient(typeof(IService), typeof(Service2), Priority = 2)]
+[Fuji.ProvideTransient(typeof(IService), typeof(Service3))]
+public partial class ServiceCollectionBuilder {}
+").ConfigureAwait(false);
+    }
+
+    [Test]
+    public async Task ServiceCollectionBuilder_MultipleSelfDescribedServicesWithSameInterface_Priority()
+    {
+        await RunGenerator(@"
+namespace Test;
+
+public class IService {}
+
+[Fuji.TransientService(typeof(IService), Priority = 1)]
+public class Service1 : IService {}
+
+[Fuji.TransientService(typeof(IService), Priority = 2)]
+public class Service2 : IService {}
+
+[Fuji.TransientService(typeof(IService))]
+public class Service3 : IService {}
+
+[Fuji.ServiceCollectionBuilder(IncludeAllServices = true)]
+public partial class ServiceCollectionBuilder {}
+").ConfigureAwait(false);
+    }
+
+    [Test]
+    public async Task ServiceProvider_MultipleServicesWithSameInterface_Priority()
+    {
+        await RunGenerator(@"
+namespace Test;
+
+public class IService {}
+public class Service1 : IService {}
+public class Service2 : IService {}
+public class Service3 : IService {}
+
+[Fuji.ServiceProvider]
+[Fuji.ProvideTransient(typeof(IService), typeof(Service1), Priority = 1)]
+[Fuji.ProvideTransient(typeof(IService), typeof(Service2), Priority = 2)]
+[Fuji.ProvideTransient(typeof(IService), typeof(Service3))]
+public partial class ServiceProvider {}
+").ConfigureAwait(false);
+    }
+
+    [Test]
+    public async Task ServiceProvider_MultipleSelfDescribedServicesWithSameInterface_Priority()
+    {
+        await RunGenerator(@"
+namespace Test;
+
+public class IService {}
+
+[Fuji.TransientService(typeof(IService), Priority = 1)]
+public class Service1 : IService {}
+
+[Fuji.TransientService(typeof(IService), Priority = 2)]
+public class Service2 : IService {}
+
+[Fuji.TransientService(typeof(IService))]
+public class Service3 : IService {}
+
+[Fuji.ServiceProvider(IncludeAllServices = true)]
+public partial class ServiceProvider {}
+").ConfigureAwait(false);
+    }
+
     private string GenerateCode(GenerateTestCase testCase)
     {
         var builder = new StringBuilder();

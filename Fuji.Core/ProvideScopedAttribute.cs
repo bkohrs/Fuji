@@ -11,4 +11,5 @@ public class ProvideScopedAttribute : Attribute
 
     public Type ImplementationType { get; }
     public Type InterfaceType { get; }
+    public int Priority { get; set; }
 }

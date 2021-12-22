@@ -8,3 +8,11 @@
 Rule ID | Category | Severity | Notes
 --------|----------|----------|--------------------
 PG0001  |  Usage   |  Error   | Missing required service
+
+## Release 0.1.3
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|--------------------
+PG0002  |  Usage   |  Error   | Duplicate services

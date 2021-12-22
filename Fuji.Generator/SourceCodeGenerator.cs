@@ -1,4 +1,5 @@
-﻿using System.Reflection;
+﻿using System.Collections.Immutable;
+using System.Reflection;
 using Microsoft.CodeAnalysis;
 
 namespace Fuji;
@@ -7,15 +8,17 @@ public class SourceCodeGenerator
 {
     private static readonly AssemblyName AssemblyName;
     private readonly ServiceProviderDefinition _definition;
+    private readonly DiagnosticReporter _diagnosticReporter;
 
     static SourceCodeGenerator()
     {
         AssemblyName = Assembly.GetExecutingAssembly().GetName();
     }
 
-    public SourceCodeGenerator(ServiceProviderDefinition definition)
+    public SourceCodeGenerator(ServiceProviderDefinition definition, DiagnosticReporter diagnosticReporter)
     {
         _definition = definition;
+        _diagnosticReporter = diagnosticReporter;
     }
 
     public string GenerateServiceCollectionBuilder()
@@ -34,7 +37,7 @@ public class SourceCodeGenerator
                 using (var methodScope =
                        classScope.CreateScope("public void Build(IServiceCollection serviceCollection)"))
                 {
-                    foreach (var service in _definition.ProvidedServices)
+                    foreach (var service in _definition.ProvidedServices.OrderBy(service => service.Priority))
                     {
                         switch (service.Lifetime)
                         {
@@ -72,9 +75,23 @@ public class SourceCodeGenerator
 
     public string GenerateServiceProvider()
     {
+        var groupedServices = _definition.ProvidedServices
+            .GroupBy(service => service.InterfaceType, SymbolEqualityComparer.Default)
+            .Where(group => group.Count() > 1)
+            .Select(group => group.Key)
+            .OfType<ITypeSymbol>()
+            .ToImmutableArray();
+
+        if (groupedServices.Any())
+        {
+            _diagnosticReporter.ReportDuplicateServices(_definition.ServiceProviderType, groupedServices);
+            return "";
+        }
+
         var writer = new CodeWriter();
         writer.WriteLine("#nullable enable");
         writer.WriteLine("");
+
         using (var namespaceScope = writer.CreateScope($"namespace {_definition.ServiceProviderType.ContainingNamespace}"))
         {
             WriteGeneratedCodeAttribute(namespaceScope);

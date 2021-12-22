@@ -6,4 +6,5 @@ public record struct InjectionCandidate(
     INamedTypeSymbol InterfaceType,
     INamedTypeSymbol ImplementationType,
     ServiceLifetime Lifetime,
-    IMethodSymbol? CustomFactory);
+    IMethodSymbol? CustomFactory,
+    int Priority);

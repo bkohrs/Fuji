@@ -14,7 +14,9 @@ public class ServiceProviderGenerator : IIncrementalGenerator
             type.Attribute.ConstructorArguments[0].Value is INamedTypeSymbol interfaceArg
                 ? interfaceArg
                 : type.Symbol;
-        return new InjectionCandidate(interfaceType, type.Symbol, serviceLifetime, null);
+        var priority = type.Attribute.NamedArguments.Where(arg => arg.Key == "Priority")
+            .Select(arg => Convert.ToInt32(arg.Value.Value)).FirstOrDefault();
+        return new InjectionCandidate(interfaceType, type.Symbol, serviceLifetime, null, priority);
     }
 
     private void Generate(SourceProductionContext sourceProductionContext, Compilation compilation,
@@ -75,14 +77,16 @@ public class ServiceProviderGenerator : IIncrementalGenerator
         {
             GenerateCode(sourceProductionContext, provider, provideAttributes,
                 asyncDisposableSymbol, disposableSymbol, selfDescribedServices, provideServiceAttribute, null,
-                definition => new SourceCodeGenerator(definition).GenerateServiceProvider());
+                (definition, diagnosticReporter) =>
+                    new SourceCodeGenerator(definition, diagnosticReporter).GenerateServiceProvider());
         }
         foreach (var provider in partitionedTypes[serviceCollectionBuilderAttributeType])
         {
             GenerateCode(sourceProductionContext, provider, provideAttributes,
                 asyncDisposableSymbol, disposableSymbol, selfDescribedServices, provideServiceAttribute,
                 providedByCollectionAttribute,
-                definition => new SourceCodeGenerator(definition).GenerateServiceCollectionBuilder());
+                (definition, diagnosticReporter) =>
+                    new SourceCodeGenerator(definition, diagnosticReporter).GenerateServiceCollectionBuilder());
         }
     }
 
@@ -92,7 +96,7 @@ public class ServiceProviderGenerator : IIncrementalGenerator
         ImmutableArray<InjectionCandidate> selfDescribedServices,
         INamedTypeSymbol provideServiceAttribute,
         INamedTypeSymbol? providedByCollectionAttribute,
-        Func<ServiceProviderDefinition, string> generateContent)
+        Func<ServiceProviderDefinition, DiagnosticReporter, string> generateContent)
     {
         var injectionCandidates =
             GetInjectionCandidates(provider.Symbol, provideAttributes,
@@ -116,7 +120,9 @@ public class ServiceProviderGenerator : IIncrementalGenerator
         var definition = new ServiceProviderDefinition(provider.Symbol, injectableServices,
             debugOutputPath);
 
-        var fileContent = generateContent(definition);
+        var fileContent = generateContent(definition, diagnosticReporter);
+        if (string.IsNullOrWhiteSpace(fileContent))
+            return;
         var fileName = $"{definition.ServiceProviderType.ToDisplayString()}.generated.cs";
         if (!string.IsNullOrWhiteSpace(definition.DebugOutputPath))
         {
@@ -168,7 +174,11 @@ public class ServiceProviderGenerator : IIncrementalGenerator
         }
 
         var validServices = injectionCandidates.Concat(selfDescribedServices)
-            .ToImmutableDictionary<InjectionCandidate, ISymbol>(candidate => candidate.InterfaceType, SymbolEqualityComparer.Default);
+            .GroupBy(candidate => candidate.InterfaceType, SymbolEqualityComparer.Default)
+            .Select(group => group.Key)
+            .ToImmutableHashSet(SymbolEqualityComparer.Default);
+        var serviceLookup = injectionCandidates.Concat(selfDescribedServices)
+            .ToLookup(candidate => candidate.InterfaceType, SymbolEqualityComparer.Default);
         var services = new Queue<InjectionCandidate>(injectionCandidates);
         if (includeAllServices)
         {
@@ -192,14 +202,16 @@ public class ServiceProviderGenerator : IIncrementalGenerator
                 disposeType = DisposeType.Sync;
             }
             var constructorArguments = GetConstructorArguments(diagnosticReporter, providerType, service,
-                type => providedByCollectionHashSet.Contains(type) || validServices.ContainsKey(type));
-            identifiedServices[service.InterfaceType] = new InjectableService(service.InterfaceType,
-                service.ImplementationType, service.Lifetime, constructorArguments, disposeType, service.CustomFactory);
+                type => providedByCollectionHashSet.Contains(type) || validServices.Contains(type));
+            identifiedServices[service.ImplementationType] = new InjectableService(service.InterfaceType,
+                service.ImplementationType, service.Lifetime, constructorArguments, disposeType, service.CustomFactory,
+                service.Priority);
             foreach (var argument in constructorArguments)
             {
                 if (ServiceHasBeenProcessed(argument))
                     continue;
-                services.Enqueue(validServices[argument]);
+                foreach (var argService in serviceLookup[argument])
+                    services.Enqueue(argService);
             }
         }
         return identifiedServices.Values.ToImmutableArray();
@@ -221,6 +233,8 @@ public class ServiceProviderGenerator : IIncrementalGenerator
 
                     var customFactory = provideAttribute.NamedArguments.Where(arg => arg.Key == "Factory")
                         .Select(arg => arg.Value.Value as string).FirstOrDefault();
+                    var priority = provideAttribute.NamedArguments.Where(arg => arg.Key == "Priority")
+                        .Select(arg => Convert.ToInt32(arg.Value.Value)).FirstOrDefault();
                     var customFactoryMethod = !string.IsNullOrWhiteSpace(customFactory)
                         ? type.GetMembers(customFactory!).FirstOrDefault() as IMethodSymbol
                         : null;
@@ -236,7 +250,7 @@ public class ServiceProviderGenerator : IIncrementalGenerator
                             ? implementationArg
                             : interfaceType;
                     return lifetime != null && interfaceType != null && implementationType != null
-                        ? new InjectionCandidate(interfaceType, implementationType, lifetime.Value, customFactoryMethod)
+                        ? new InjectionCandidate(interfaceType, implementationType, lifetime.Value, customFactoryMethod, priority)
                         : null;
                 })
             .Where(candidate => candidate is not null)

@@ -9,4 +9,5 @@ public class TransientServiceAttribute : Attribute
     }
 
     public Type? InterfaceType { get; }
+    public int Priority { get; set; }
 }

@@ -12,4 +12,5 @@ public class ProvideSingletonAttribute : Attribute
     public Type ImplementationType { get; }
     public Type InterfaceType { get; }
     public string? Factory { get; set; }
+    public int Priority { get; set; }
 }

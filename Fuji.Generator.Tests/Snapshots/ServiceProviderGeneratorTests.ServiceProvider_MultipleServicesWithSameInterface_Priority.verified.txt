@@ -1,0 +1,14 @@
+﻿{
+  Diagnostics: [
+    {
+      Id: PG0002,
+      Title: Duplicate services,
+      Severity: Error,
+      WarningLevel: 0,
+      Location: : (0,0)-(0,0),
+      MessageFormat: Duplicate services '{0}' are not supported for type '{1}',
+      Message: Duplicate services 'Test.IService' are not supported for type 'Test.ServiceProvider',
+      Category: Usage
+    }
+  ]
+}
