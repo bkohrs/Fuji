@@ -190,7 +190,7 @@ public class ExampleServiceCollectionBuilderTests
         Assert.That(service, Is.Not.Null);
         Assert.That(service, Is.TypeOf<MultipleImplementationService2>());
 
-        var services = _provider?.GetServices<IMultipleImplementationService>()?.ToImmutableArray();
+        var services = _provider?.GetServices<IMultipleImplementationService>().ToImmutableArray();
         Assert.That(services?.OfType<MultipleImplementationService1>().Count(), Is.EqualTo(1));
         Assert.That(services?.OfType<MultipleImplementationService2>().Count(), Is.EqualTo(1));
     }
