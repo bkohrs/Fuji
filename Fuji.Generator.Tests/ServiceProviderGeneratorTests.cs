@@ -377,6 +377,29 @@ public partial class ServiceCollectionBuilder {}
     }
 
     [Test]
+    public async Task ServiceCollectionBuilder_ServiceDependsOnEnumerableOfService()
+    {
+        await RunGenerator(@"
+namespace Test;
+
+public interface IDependency {}
+public class Dependency1 : IDependency {}
+public class Dependency2 : IDependency {}
+public interface IService {}
+public class Service : IService
+{
+    public Service(System.Collections.Generic.IEnumerable<IDependency> dependencies) {}
+}
+
+[Fuji.ServiceCollectionBuilder]
+[Fuji.ProvideTransient(typeof(IDependency), typeof(Dependency1))]
+[Fuji.ProvideTransient(typeof(IDependency), typeof(Dependency2))]
+[Fuji.ProvideTransient(typeof(IService), typeof(Service))]
+public partial class ServiceCollectionBuilder {}
+").ConfigureAwait(false);
+    }
+
+    [Test]
     public async Task ServiceProvider_MultipleServicesWithSameInterface_Priority()
     {
         await RunGenerator(@"

@@ -27,6 +27,7 @@ public class ServiceProviderGenerator : IIncrementalGenerator
 
         var asyncDisposableSymbol = compilation.GetRequiredTypeByMetadataName("System.IAsyncDisposable");
         var disposableSymbol = compilation.GetRequiredTypeByMetadataName("System.IDisposable");
+        var enumerableSymbol = compilation.GetRequiredTypeByMetadataName("System.Collections.Generic.IEnumerable`1");
         var serviceProviderAttributeType = compilation.GetRequiredTypeByMetadataName(AttributeNames.ServiceProvider);
         var serviceCollectionBuilderAttributeType = compilation.GetRequiredTypeByMetadataName(AttributeNames.ServiceCollectionBuilder);
         var provideTransientAttribute = compilation.GetRequiredTypeByMetadataName(AttributeNames.ProvideTransient);
@@ -76,14 +77,14 @@ public class ServiceProviderGenerator : IIncrementalGenerator
         foreach (var provider in partitionedTypes[serviceProviderAttributeType])
         {
             GenerateCode(sourceProductionContext, provider, provideAttributes,
-                asyncDisposableSymbol, disposableSymbol, selfDescribedServices, provideServiceAttribute, null,
+                asyncDisposableSymbol, disposableSymbol, enumerableSymbol, selfDescribedServices, provideServiceAttribute, null,
                 (definition, diagnosticReporter) =>
                     new SourceCodeGenerator(definition, diagnosticReporter).GenerateServiceProvider());
         }
         foreach (var provider in partitionedTypes[serviceCollectionBuilderAttributeType])
         {
             GenerateCode(sourceProductionContext, provider, provideAttributes,
-                asyncDisposableSymbol, disposableSymbol, selfDescribedServices, provideServiceAttribute,
+                asyncDisposableSymbol, disposableSymbol, enumerableSymbol, selfDescribedServices, provideServiceAttribute,
                 providedByCollectionAttribute,
                 (definition, diagnosticReporter) =>
                     new SourceCodeGenerator(definition, diagnosticReporter).GenerateServiceCollectionBuilder());
@@ -92,7 +93,7 @@ public class ServiceProviderGenerator : IIncrementalGenerator
 
     private void GenerateCode(SourceProductionContext sourceProductionContext, AttributedSymbol provider,
         ImmutableArray<(INamedTypeSymbol Symbol, ServiceLifetime Lifetime)> provideAttributes,
-        INamedTypeSymbol asyncDisposableSymbol, INamedTypeSymbol disposableSymbol,
+        INamedTypeSymbol asyncDisposableSymbol, INamedTypeSymbol disposableSymbol, INamedTypeSymbol enumerableSymbol,
         ImmutableArray<InjectionCandidate> selfDescribedServices,
         INamedTypeSymbol provideServiceAttribute,
         INamedTypeSymbol? providedByCollectionAttribute,
@@ -109,7 +110,7 @@ public class ServiceProviderGenerator : IIncrementalGenerator
                 .Select(arg => arg.Value.Value).FirstOrDefault());
         var diagnosticReporter = new DiagnosticReporter(sourceProductionContext);
         var injectableServices = GetInjectableServices(diagnosticReporter, provider.Symbol, injectionCandidates,
-            asyncDisposableSymbol, disposableSymbol, selfDescribedServices, providedByCollection, includeAllServices);
+            asyncDisposableSymbol, disposableSymbol, enumerableSymbol, selfDescribedServices, providedByCollection, includeAllServices);
 
         if (diagnosticReporter.HasError)
             return;
@@ -162,7 +163,7 @@ public class ServiceProviderGenerator : IIncrementalGenerator
     private ImmutableArray<InjectableService> GetInjectableServices(
         DiagnosticReporter diagnosticReporter, ITypeSymbol providerType,
         ImmutableArray<InjectionCandidate> injectionCandidates, INamedTypeSymbol asyncDisposableSymbol,
-        INamedTypeSymbol disposableSymbol, ImmutableArray<InjectionCandidate> selfDescribedServices,
+        INamedTypeSymbol disposableSymbol, INamedTypeSymbol enumerableSymbol, ImmutableArray<InjectionCandidate> selfDescribedServices,
         IEnumerable<INamedTypeSymbol> providedByCollection, bool includeAllServices)
     {
         var identifiedServices = new Dictionary<ISymbol, InjectableService>(SymbolEqualityComparer.Default);
@@ -202,7 +203,15 @@ public class ServiceProviderGenerator : IIncrementalGenerator
                 disposeType = DisposeType.Sync;
             }
             var constructorArguments = GetConstructorArguments(diagnosticReporter, providerType, service,
-                type => providedByCollectionHashSet.Contains(type) || validServices.Contains(type));
+                type =>
+                {
+                    var resolvedType =
+                        type is INamedTypeSymbol { IsGenericType: true } namedType &&
+                        SymbolEqualityComparer.Default.Equals(enumerableSymbol, type.OriginalDefinition)
+                            ? namedType.TypeArguments[0]
+                            : type;
+                    return providedByCollectionHashSet.Contains(resolvedType) || validServices.Contains(resolvedType);
+                });
             identifiedServices[service.ImplementationType] = new InjectableService(service.InterfaceType,
                 service.ImplementationType, service.Lifetime, constructorArguments, disposeType, service.CustomFactory,
                 service.Priority);
