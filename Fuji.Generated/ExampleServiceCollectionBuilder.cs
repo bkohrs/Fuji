@@ -18,6 +18,7 @@ namespace Fuji.Generated;
 [ProvidedByCollection(typeof(CollectionProvidedService))]
 [ProvideTransient(typeof(IMultipleImplementationService), typeof(MultipleImplementationService1))]
 [ProvideTransient(typeof(IMultipleImplementationService), typeof(MultipleImplementationService2), Priority = 1)]
+[ProvideTransient(typeof(ServiceDependsOnEnumerable))]
 public partial class ExampleServiceCollectionBuilder
 {
     private FactoryProvidedSingleton CreateFactoryProvidedSingleton()

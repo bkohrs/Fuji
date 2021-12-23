@@ -1,4 +1,5 @@
-﻿using Fuji.Generated.Services;
+﻿using System.Collections.Immutable;
+using Fuji.Generated.Services;
 using Microsoft.Extensions.DependencyInjection;
 using NUnit.Framework;
 
@@ -331,5 +332,26 @@ public class ExampleServiceProviderTests
             Assert.That(isService.IsService(typeof(ITransientService)), Is.True);
         else
             Assert.Fail("Provider does not implement IServiceProviderIsService");
+    }
+
+    [Test]
+    public void MultipleImplementationService()
+    {
+        var service = _provider?.GetService<IMultipleImplementationService>();
+        Assert.That(service, Is.Not.Null);
+        Assert.That(service, Is.TypeOf<MultipleImplementationService2>());
+
+        var services = _provider?.GetServices<IMultipleImplementationService>().ToImmutableArray();
+        Assert.That(services?.OfType<MultipleImplementationService1>().Count(), Is.EqualTo(1));
+        Assert.That(services?.OfType<MultipleImplementationService2>().Count(), Is.EqualTo(1));
+    }
+
+    [Test]
+    public void ServiceDependsOnEnumerable()
+    {
+        var service = _provider?.GetService<ServiceDependsOnEnumerable>();
+        Assert.That(service, Is.Not.Null);
+        Assert.That(service?.Dependencies.OfType<MultipleImplementationService1>(), Is.Not.Empty);
+        Assert.That(service?.Dependencies.OfType<MultipleImplementationService2>(), Is.Not.Empty);
     }
 }

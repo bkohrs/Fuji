@@ -22,6 +22,9 @@ namespace Fuji.Generated;
 [ProvideScoped(typeof(ScopedDisposableService))]
 [ProvideScoped(typeof(ScopedServiceWithSingletonDependency))]
 [ProvideScoped(typeof(ScopedServiceWithTransientDependency))]
+[ProvideTransient(typeof(IMultipleImplementationService), typeof(MultipleImplementationService1))]
+[ProvideTransient(typeof(IMultipleImplementationService), typeof(MultipleImplementationService2), Priority = 1)]
+[ProvideTransient(typeof(ServiceDependsOnEnumerable))]
 public partial class ExampleServiceProvider
 {
     private FactoryProvidedSingleton CreateFactoryProvidedSingleton()

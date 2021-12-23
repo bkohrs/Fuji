@@ -194,4 +194,13 @@ public class ExampleServiceCollectionBuilderTests
         Assert.That(services?.OfType<MultipleImplementationService1>().Count(), Is.EqualTo(1));
         Assert.That(services?.OfType<MultipleImplementationService2>().Count(), Is.EqualTo(1));
     }
+
+    [Test]
+    public void ServiceDependsOnEnumerable()
+    {
+        var service = _provider?.GetService<ServiceDependsOnEnumerable>();
+        Assert.That(service, Is.Not.Null);
+        Assert.That(service?.Dependencies.OfType<MultipleImplementationService1>(), Is.Not.Empty);
+        Assert.That(service?.Dependencies.OfType<MultipleImplementationService2>(), Is.Not.Empty);
+    }
 }
