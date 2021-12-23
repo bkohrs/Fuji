@@ -341,7 +341,7 @@ public partial class ServiceProvider {}
         await RunGenerator(@"
 namespace Test;
 
-public class IService {}
+public interface IService {}
 public class Service1 : IService {}
 public class Service2 : IService {}
 public class Service3 : IService {}
@@ -360,7 +360,7 @@ public partial class ServiceCollectionBuilder {}
         await RunGenerator(@"
 namespace Test;
 
-public class IService {}
+public interface IService {}
 
 [Fuji.TransientService(typeof(IService), Priority = 1)]
 public class Service1 : IService {}
@@ -382,7 +382,7 @@ public partial class ServiceCollectionBuilder {}
         await RunGenerator(@"
 namespace Test;
 
-public class IService {}
+public interface IService {}
 public class Service1 : IService {}
 public class Service2 : IService {}
 public class Service3 : IService {}
@@ -401,7 +401,7 @@ public partial class ServiceProvider {}
         await RunGenerator(@"
 namespace Test;
 
-public class IService {}
+public interface IService {}
 
 [Fuji.TransientService(typeof(IService), Priority = 1)]
 public class Service1 : IService {}
