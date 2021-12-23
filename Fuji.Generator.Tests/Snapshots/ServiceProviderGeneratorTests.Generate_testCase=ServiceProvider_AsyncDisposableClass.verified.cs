@@ -36,6 +36,7 @@ namespace Test
         {
             _factory[typeof(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory)] = () => this;
             _factory[typeof(Test.Service)] = GetTest_Service;
+            _factory[typeof(System.Collections.Generic.IEnumerable<Test.Service>)] = GetEnumerableTest_Service;
         }
         public object? GetService(Type serviceType)
         {
@@ -49,6 +50,10 @@ namespace Test
         {
             return AddAsyncDisposable(new Test.Service());
         }
+        private System.Collections.Generic.IEnumerable<Test.Service> GetEnumerableTest_Service()
+        {
+            return new Test.Service[]{GetTest_Service()};
+        }
         protected class Scope : System.IServiceProvider, System.IAsyncDisposable, Microsoft.Extensions.DependencyInjection.IServiceScope
         {
             private readonly Test.ServiceProvider _root;
@@ -59,6 +64,7 @@ namespace Test
             {
                 _root = root;
                 _factory[typeof(Test.Service)] = GetTest_Service;
+                _factory[typeof(System.Collections.Generic.IEnumerable<Test.Service>)] = GetEnumerableTest_Service;
             }
             public System.IServiceProvider ServiceProvider => this;
             protected T AddAsyncDisposable<T>(T asyncDisposable) where T: System.IAsyncDisposable
@@ -78,6 +84,10 @@ namespace Test
             private Test.Service GetTest_Service()
             {
                 return AddAsyncDisposable(new Test.Service());
+            }
+            private System.Collections.Generic.IEnumerable<Test.Service> GetEnumerableTest_Service()
+            {
+                return new Test.Service[]{GetTest_Service()};
             }
             public async System.Threading.Tasks.ValueTask DisposeAsync()
             {

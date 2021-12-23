@@ -67,7 +67,7 @@ public class ServiceProviderProcessor
     private void GenerateCode(AttributedSymbol provider,
         ImmutableArray<InjectionCandidate> selfDescribedServices,
         INamedTypeSymbol? providedByCollectionAttribute,
-        Func<ServiceProviderDefinition, DiagnosticReporter, string> generateContent)
+        Func<ServiceProviderDefinition, string> generateContent)
     {
         var injectionCandidates =
             GetInjectionCandidates(provider.Symbol,
@@ -91,7 +91,7 @@ public class ServiceProviderProcessor
         var definition = new ServiceProviderDefinition(provider.Symbol, injectableServices,
             debugOutputPath);
 
-        var fileContent = generateContent(definition, diagnosticReporter);
+        var fileContent = generateContent(definition);
         if (string.IsNullOrWhiteSpace(fileContent))
             return;
         var fileName = $"{definition.ServiceProviderType.ToDisplayString()}.generated.cs";
@@ -322,15 +322,15 @@ public class ServiceProviderProcessor
         foreach (var provider in partitionedTypes[_serviceProviderAttributeType])
         {
             GenerateCode(provider, selfDescribedServices, null,
-                (definition, diagnosticReporter) =>
-                    new SourceCodeGenerator(definition, diagnosticReporter).GenerateServiceProvider());
+                definition =>
+                    new SourceCodeGenerator(definition, _enumerableSymbol).GenerateServiceProvider());
         }
         foreach (var provider in partitionedTypes[_serviceCollectionBuilderAttributeType])
         {
             GenerateCode(provider, selfDescribedServices,
                 _providedByCollectionAttribute,
-                (definition, diagnosticReporter) =>
-                    new SourceCodeGenerator(definition, diagnosticReporter).GenerateServiceCollectionBuilder());
+                definition =>
+                    new SourceCodeGenerator(definition, _enumerableSymbol).GenerateServiceCollectionBuilder());
         }
     }
 

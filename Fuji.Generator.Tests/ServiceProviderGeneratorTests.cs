@@ -400,7 +400,7 @@ public partial class ServiceCollectionBuilder {}
     }
 
     [Test]
-    public async Task ServiceProvider_MultipleServicesWithSameInterface_Priority()
+    public async Task ServiceProvider_MultipleTransientServicesWithSameInterface_Priority()
     {
         await RunGenerator(@"
 namespace Test;
@@ -419,7 +419,7 @@ public partial class ServiceProvider {}
     }
 
     [Test]
-    public async Task ServiceProvider_MultipleSelfDescribedServicesWithSameInterface_Priority()
+    public async Task ServiceProvider_MultipleSelfDescribedTransientServicesWithSameInterface_Priority()
     {
         await RunGenerator(@"
 namespace Test;
@@ -436,6 +436,111 @@ public class Service2 : IService {}
 public class Service3 : IService {}
 
 [Fuji.ServiceProvider(IncludeAllServices = true)]
+public partial class ServiceProvider {}
+").ConfigureAwait(false);
+    }
+
+    [Test]
+    public async Task ServiceProvider_MultipleScopedServicesWithSameInterface_Priority()
+    {
+        await RunGenerator(@"
+namespace Test;
+
+public interface IService {}
+public class Service1 : IService {}
+public class Service2 : IService {}
+public class Service3 : IService {}
+
+[Fuji.ServiceProvider]
+[Fuji.ProvideScoped(typeof(IService), typeof(Service1), Priority = 1)]
+[Fuji.ProvideScoped(typeof(IService), typeof(Service2), Priority = 2)]
+[Fuji.ProvideScoped(typeof(IService), typeof(Service3))]
+public partial class ServiceProvider {}
+").ConfigureAwait(false);
+    }
+
+    [Test]
+    public async Task ServiceProvider_MultipleSelfDescribedScopedServicesWithSameInterface_Priority()
+    {
+        await RunGenerator(@"
+namespace Test;
+
+public interface IService {}
+
+[Fuji.ScopedService(typeof(IService), Priority = 1)]
+public class Service1 : IService {}
+
+[Fuji.ScopedService(typeof(IService), Priority = 2)]
+public class Service2 : IService {}
+
+[Fuji.ScopedService(typeof(IService))]
+public class Service3 : IService {}
+
+[Fuji.ServiceProvider(IncludeAllServices = true)]
+public partial class ServiceProvider {}
+").ConfigureAwait(false);
+    }
+
+    [Test]
+    public async Task ServiceProvider_MultipleSingletonServicesWithSameInterface_Priority()
+    {
+        await RunGenerator(@"
+namespace Test;
+
+public interface IService {}
+public class Service1 : IService {}
+public class Service2 : IService {}
+public class Service3 : IService {}
+
+[Fuji.ServiceProvider]
+[Fuji.ProvideSingleton(typeof(IService), typeof(Service1), Priority = 1)]
+[Fuji.ProvideSingleton(typeof(IService), typeof(Service2), Priority = 2)]
+[Fuji.ProvideSingleton(typeof(IService), typeof(Service3))]
+public partial class ServiceProvider {}
+").ConfigureAwait(false);
+    }
+
+    [Test]
+    public async Task ServiceProvider_MultipleSelfDescribedSingletonServicesWithSameInterface_Priority()
+    {
+        await RunGenerator(@"
+namespace Test;
+
+public interface IService {}
+
+[Fuji.SingletonService(typeof(IService), Priority = 1)]
+public class Service1 : IService {}
+
+[Fuji.SingletonService(typeof(IService), Priority = 2)]
+public class Service2 : IService {}
+
+[Fuji.SingletonService(typeof(IService))]
+public class Service3 : IService {}
+
+[Fuji.ServiceProvider(IncludeAllServices = true)]
+public partial class ServiceProvider {}
+").ConfigureAwait(false);
+    }
+
+    [Test]
+    public async Task ServiceProvider_ServiceDependsOnEnumerableOfService()
+    {
+        await RunGenerator(@"
+namespace Test;
+
+public interface IDependency {}
+public class Dependency1 : IDependency {}
+public class Dependency2 : IDependency {}
+public interface IService {}
+public class Service : IService
+{
+    public Service(System.Collections.Generic.IEnumerable<IDependency> dependencies) {}
+}
+
+[Fuji.ServiceProvider]
+[Fuji.ProvideTransient(typeof(IDependency), typeof(Dependency1))]
+[Fuji.ProvideTransient(typeof(IDependency), typeof(Dependency2))]
+[Fuji.ProvideTransient(typeof(IService), typeof(Service))]
 public partial class ServiceProvider {}
 ").ConfigureAwait(false);
     }

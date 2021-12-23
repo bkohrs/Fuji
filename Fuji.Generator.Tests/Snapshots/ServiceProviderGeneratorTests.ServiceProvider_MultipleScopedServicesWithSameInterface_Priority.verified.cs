@@ -8,7 +8,9 @@ namespace Test
         private readonly System.Collections.Concurrent.ConcurrentBag<IAsyncDisposable> _asyncDisposables = new();
         private readonly System.Collections.Concurrent.ConcurrentBag<IDisposable> _disposables = new();
         private readonly System.Collections.Generic.Dictionary<Type, Func<object>> _factory = new();
-        private readonly System.Lazy<Test.IService2> _Test_IService2;
+        private readonly System.Lazy<Test.IService> _Test_IService;
+        private readonly System.Lazy<Test.IService> _Test_Service1;
+        private readonly System.Lazy<Test.IService> _Test_Service3;
         
         protected T AddAsyncDisposable<T>(T asyncDisposable) where T: System.IAsyncDisposable
         {
@@ -36,11 +38,11 @@ namespace Test
         public ServiceProvider()
         {
             _factory[typeof(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory)] = () => this;
-            _factory[typeof(Test.IService1)] = GetTest_IService1;
-            _Test_IService2 = new System.Lazy<Test.IService2>(CreateTest_IService2);
-            _factory[typeof(Test.IService2)] = GetTest_IService2;
-            _factory[typeof(System.Collections.Generic.IEnumerable<Test.IService1>)] = GetEnumerableTest_IService1;
-            _factory[typeof(System.Collections.Generic.IEnumerable<Test.IService2>)] = GetEnumerableTest_IService2;
+            _Test_IService = new System.Lazy<Test.IService>(CreateTest_IService);
+            _factory[typeof(Test.IService)] = GetTest_IService;
+            _Test_Service1 = new System.Lazy<Test.IService>(CreateTest_Service1);
+            _Test_Service3 = new System.Lazy<Test.IService>(CreateTest_Service3);
+            _factory[typeof(System.Collections.Generic.IEnumerable<Test.IService>)] = GetEnumerableTest_IService;
         }
         public object? GetService(Type serviceType)
         {
@@ -50,27 +52,33 @@ namespace Test
         {
             return _factory.ContainsKey(serviceType);
         }
-        private Test.IService1 GetTest_IService1()
-        {
-            return new Test.Service1(
-                GetTest_IService2()
-            );
-        }
-        private Test.IService2 CreateTest_IService2()
+        private Test.IService CreateTest_IService()
         {
             return new Test.Service2();
         }
-        private Test.IService2 GetTest_IService2()
+        private Test.IService GetTest_IService()
         {
-            return _Test_IService2.Value;
+            return _Test_IService.Value;
         }
-        private System.Collections.Generic.IEnumerable<Test.IService1> GetEnumerableTest_IService1()
+        private Test.IService CreateTest_Service1()
         {
-            return new Test.IService1[]{GetTest_IService1()};
+            return new Test.Service1();
         }
-        private System.Collections.Generic.IEnumerable<Test.IService2> GetEnumerableTest_IService2()
+        private Test.IService GetTest_Service1()
         {
-            return new Test.IService2[]{GetTest_IService2()};
+            return _Test_Service1.Value;
+        }
+        private Test.IService CreateTest_Service3()
+        {
+            return new Test.Service3();
+        }
+        private Test.IService GetTest_Service3()
+        {
+            return _Test_Service3.Value;
+        }
+        private System.Collections.Generic.IEnumerable<Test.IService> GetEnumerableTest_IService()
+        {
+            return new Test.IService[]{GetTest_IService(), GetTest_Service1(), GetTest_Service3()};
         }
         protected class Scope : System.IServiceProvider, System.IAsyncDisposable, Microsoft.Extensions.DependencyInjection.IServiceScope
         {
@@ -78,12 +86,17 @@ namespace Test
             private readonly System.Collections.Concurrent.ConcurrentBag<IAsyncDisposable> _asyncDisposables = new();
             private readonly System.Collections.Concurrent.ConcurrentBag<IDisposable> _disposables = new();
             private readonly System.Collections.Generic.Dictionary<Type, Func<object>> _factory = new();
+            private readonly System.Lazy<Test.IService> _Test_IService;
+            private readonly System.Lazy<Test.IService> _Test_Service1;
+            private readonly System.Lazy<Test.IService> _Test_Service3;
             public Scope(Test.ServiceProvider root)
             {
                 _root = root;
-                _factory[typeof(Test.IService1)] = GetTest_IService1;
-                _factory[typeof(System.Collections.Generic.IEnumerable<Test.IService1>)] = GetEnumerableTest_IService1;
-                _factory[typeof(System.Collections.Generic.IEnumerable<Test.IService2>)] = GetEnumerableTest_IService2;
+                _Test_IService = new System.Lazy<Test.IService>(CreateTest_IService);
+                _factory[typeof(Test.IService)] = GetTest_IService;
+                _Test_Service1 = new System.Lazy<Test.IService>(CreateTest_Service1);
+                _Test_Service3 = new System.Lazy<Test.IService>(CreateTest_Service3);
+                _factory[typeof(System.Collections.Generic.IEnumerable<Test.IService>)] = GetEnumerableTest_IService;
             }
             public System.IServiceProvider ServiceProvider => this;
             protected T AddAsyncDisposable<T>(T asyncDisposable) where T: System.IAsyncDisposable
@@ -100,27 +113,33 @@ namespace Test
             {
                 return _factory.TryGetValue(serviceType, out var func) ? func() : _root.GetService(serviceType);
             }
-            private Test.IService1 GetTest_IService1()
-            {
-                return new Test.Service1(
-                    GetTest_IService2()
-                );
-            }
-            private Test.IService2 CreateTest_IService2()
+            private Test.IService CreateTest_IService()
             {
                 return new Test.Service2();
             }
-            private Test.IService2 GetTest_IService2()
+            private Test.IService GetTest_IService()
             {
-                return _root.GetTest_IService2();
+                return _Test_IService.Value;
             }
-            private System.Collections.Generic.IEnumerable<Test.IService1> GetEnumerableTest_IService1()
+            private Test.IService CreateTest_Service1()
             {
-                return new Test.IService1[]{GetTest_IService1()};
+                return new Test.Service1();
             }
-            private System.Collections.Generic.IEnumerable<Test.IService2> GetEnumerableTest_IService2()
+            private Test.IService GetTest_Service1()
             {
-                return new Test.IService2[]{GetTest_IService2()};
+                return _Test_Service1.Value;
+            }
+            private Test.IService CreateTest_Service3()
+            {
+                return new Test.Service3();
+            }
+            private Test.IService GetTest_Service3()
+            {
+                return _Test_Service3.Value;
+            }
+            private System.Collections.Generic.IEnumerable<Test.IService> GetEnumerableTest_IService()
+            {
+                return new Test.IService[]{GetTest_IService(), GetTest_Service1(), GetTest_Service3()};
             }
             public async System.Threading.Tasks.ValueTask DisposeAsync()
             {

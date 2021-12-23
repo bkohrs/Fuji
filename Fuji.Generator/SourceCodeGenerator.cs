@@ -8,17 +8,17 @@ public class SourceCodeGenerator
 {
     private static readonly AssemblyName AssemblyName;
     private readonly ServiceProviderDefinition _definition;
-    private readonly DiagnosticReporter _diagnosticReporter;
+    private readonly INamedTypeSymbol _enumerableSymbol;
 
     static SourceCodeGenerator()
     {
         AssemblyName = Assembly.GetExecutingAssembly().GetName();
     }
 
-    public SourceCodeGenerator(ServiceProviderDefinition definition, DiagnosticReporter diagnosticReporter)
+    public SourceCodeGenerator(ServiceProviderDefinition definition, INamedTypeSymbol enumerableSymbol)
     {
         _definition = definition;
-        _diagnosticReporter = diagnosticReporter;
+        _enumerableSymbol = enumerableSymbol;
     }
 
     public string GenerateServiceCollectionBuilder()
@@ -75,18 +75,14 @@ public class SourceCodeGenerator
 
     public string GenerateServiceProvider()
     {
-        var groupedServices = _definition.ProvidedServices
+        var services = _definition.ProvidedServices
+            .OrderByDescending(service => service.Priority)
             .GroupBy(service => service.InterfaceType, SymbolEqualityComparer.Default)
-            .Where(group => group.Count() > 1)
-            .Select(group => group.Key)
-            .OfType<ITypeSymbol>()
+            .SelectMany(group => group.Select((service, index) => (Service: service, IsPrimary: index == 0)))
             .ToImmutableArray();
-
-        if (groupedServices.Any())
-        {
-            _diagnosticReporter.ReportDuplicateServices(_definition.ServiceProviderType, groupedServices);
-            return "";
-        }
+        var serviceLookup =
+            services.ToLookup<(InjectableService Service, bool IsPrimary), ITypeSymbol>(
+                service => service.Service.InterfaceType, SymbolEqualityComparer.Default);
 
         var writer = new CodeWriter();
         writer.WriteLine("#nullable enable");
@@ -101,8 +97,8 @@ public class SourceCodeGenerator
             {
                 WriteDisposableCollections(classScope);
                 WriteFactoryDeclaration(classScope);
-                WriteServiceFields(classScope, _definition.ProvidedServices.Where(service =>
-                    service.Lifetime != ServiceLifetime.Transient));
+                WriteServiceFields(classScope, services.Where(service =>
+                    service.Service.Lifetime != ServiceLifetime.Transient));
                 classScope.WriteLine("");
                 WriteAddDisposableMethods(classScope);
                 using (var methodScope =
@@ -116,10 +112,10 @@ public class SourceCodeGenerator
                 {
                     methodScope.WriteLine(
                         "_factory[typeof(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory)] = () => this;");
-                    foreach (var service in _definition.ProvidedServices)
-                    {
-                        WriteServiceFactoryInitialization(methodScope, service);
-                    }
+                    foreach (var service in services)
+                        WriteServiceFactoryInitialization(methodScope, service.Service, service.IsPrimary);
+                    foreach (var group in serviceLookup)
+                        WriteEnumerableFactoryInitialization(methodScope, group);
                 }
                 using (var methodScope = classScope.CreateScope("public object? GetService(Type serviceType)"))
                 {
@@ -130,10 +126,14 @@ public class SourceCodeGenerator
                     methodScope.WriteLine("return _factory.ContainsKey(serviceType);");
                 }
 
-                foreach (var service in _definition.ProvidedServices)
+                foreach (var service in services)
                 {
-                    WriteServiceFactoryMethod(classScope, service);
-                    WriteServiceResolutionMethod(classScope, service, ResolutionTarget.Root);
+                    WriteServiceFactoryMethod(classScope, service.Service, service.IsPrimary, serviceLookup);
+                    WriteServiceResolutionMethod(classScope, service.Service, service.IsPrimary, ResolutionTarget.Root);
+                }
+                foreach (var group in serviceLookup)
+                {
+                    WriteEnumerableResolutionMethod(classScope, group, serviceLookup);
                 }
                 using (var nestedClassScope = classScope.CreateScope(
                            "protected class Scope : System.IServiceProvider, System.IAsyncDisposable, Microsoft.Extensions.DependencyInjection.IServiceScope"))
@@ -141,16 +141,18 @@ public class SourceCodeGenerator
                     nestedClassScope.WriteLine($"private readonly {_definition.ServiceProviderType.ToDisplayString()} _root;");
                     WriteDisposableCollections(nestedClassScope);
                     WriteFactoryDeclaration(nestedClassScope);
-                    WriteServiceFields(nestedClassScope, _definition.ProvidedServices.Where(service =>
-                        service.Lifetime == ServiceLifetime.Scoped));
+                    WriteServiceFields(nestedClassScope, services.Where(service =>
+                        service.Service.Lifetime == ServiceLifetime.Scoped));
                     using (var methodScope = nestedClassScope.CreateScope($"public Scope({_definition.ServiceProviderType.ToDisplayString()} root)"))
                     {
                         methodScope.WriteLine("_root = root;");
-                        foreach (var service in _definition.ProvidedServices.Where(service =>
-                                     service.Lifetime != ServiceLifetime.Singleton))
+                        foreach (var service in services.Where(service =>
+                                     service.Service.Lifetime != ServiceLifetime.Singleton))
                         {
-                            WriteServiceFactoryInitialization(methodScope, service);
+                            WriteServiceFactoryInitialization(methodScope, service.Service, service.IsPrimary);
                         }
+                        foreach (var group in serviceLookup)
+                            WriteEnumerableFactoryInitialization(methodScope, group);
                     }
                     nestedClassScope.WriteLine("public System.IServiceProvider ServiceProvider => this;");
                     WriteAddDisposableMethods(nestedClassScope);
@@ -158,10 +160,14 @@ public class SourceCodeGenerator
                     {
                         methodScope.WriteLine("return _factory.TryGetValue(serviceType, out var func) ? func() : _root.GetService(serviceType);");
                     }
-                    foreach (var service in _definition.ProvidedServices)
+                    foreach (var service in services)
                     {
-                        WriteServiceFactoryMethod(nestedClassScope, service);
-                        WriteServiceResolutionMethod(nestedClassScope, service, ResolutionTarget.Scope);
+                        WriteServiceFactoryMethod(nestedClassScope, service.Service, service.IsPrimary, serviceLookup);
+                        WriteServiceResolutionMethod(nestedClassScope, service.Service, service.IsPrimary, ResolutionTarget.Scope);
+                    }
+                    foreach (var group in serviceLookup)
+                    {
+                        WriteEnumerableResolutionMethod(nestedClassScope, group, serviceLookup);
                     }
                     WriteDisposeAsyncMethod(nestedClassScope);
                     using (var methodScope =
@@ -175,23 +181,29 @@ public class SourceCodeGenerator
         return writer.ToString();
     }
 
-    private string GetFactoryMethodName(InjectableService service)
+    private string GetEnumerableResolutionMethodName(ITypeSymbol serviceType)
+    {
+        return $"GetEnumerable{serviceType.ToDisplayString().Replace(".", "_")}";
+    }
+
+    private string GetFactoryMethodName(InjectableService service, bool isPrimary)
     {
         if (service.CustomFactory != null)
             return service.CustomFactory.Name;
         if (service.Lifetime != ServiceLifetime.Transient)
-            return $"Create{service.InterfaceType.ToDisplayString().Replace(".", "_")}";
-        return GetResolutionMethodName(service.InterfaceType);
+            return $"Create{(isPrimary ? service.InterfaceType : service.ImplementationType).ToDisplayString().Replace(".", "_")}";
+        return GetResolutionMethodName(service, isPrimary);
     }
 
-    private string GetResolutionMethodName(INamedTypeSymbol namedTypeSymbol)
+    private string GetResolutionMethodName(InjectableService service, bool isPrimary)
     {
-        return $"Get{namedTypeSymbol.ToDisplayString().Replace(".", "_")}";
+        return $"Get{(isPrimary ? service.InterfaceType : service.ImplementationType).ToDisplayString().Replace(".", "_")}";
     }
 
-    private static string GetServiceFieldName(INamedTypeSymbol namedTypeSymbol)
+    private static string GetServiceFieldName(InjectableService service, bool isPrimary)
     {
-        return "_" + namedTypeSymbol.ToDisplayString().Replace(".", "_");
+        return "_" + (isPrimary ? service.InterfaceType : service.ImplementationType).ToDisplayString()
+            .Replace(".", "_");
     }
 
     private static void WriteAddDisposableMethods(ICodeWriterScope scope)
@@ -232,6 +244,25 @@ public class SourceCodeGenerator
         }
     }
 
+    private void WriteEnumerableFactoryInitialization(ICodeWriterScope scope, IGrouping<ITypeSymbol,(InjectableService Service, bool IsPrimary)> group)
+    {
+        scope.WriteLine($"_factory[typeof(System.Collections.Generic.IEnumerable<{group.Key.ToDisplayString()}>)] = {GetEnumerableResolutionMethodName(group.Key)};");
+    }
+
+    private void WriteEnumerableResolutionMethod(ICodeWriterScope scope,
+        IGrouping<ITypeSymbol, (InjectableService Service, bool IsPrimary)> @group,
+        ILookup<ITypeSymbol, (InjectableService Service, bool IsPrimary)> serviceLookup)
+    {
+        using var methodScope = scope.CreateScope($"private System.Collections.Generic.IEnumerable<{group.Key.ToDisplayString()}> {GetEnumerableResolutionMethodName(group.Key)}()");
+
+        var elementType = group.Key;
+        var parameterServices = serviceLookup[elementType].ToImmutableArray();
+        var argumentString = string.Join(", ",
+            parameterServices.Select(paramService =>
+                $"{GetResolutionMethodName(paramService.Service, paramService.IsPrimary)}()"));
+        methodScope.WriteLine($"return new {elementType.ToDisplayString()}[{(!parameterServices.Any() ? "0" : "")}]{{{argumentString}}};");
+    }
+
     private static void WriteFactoryDeclaration(ICodeWriterScope scope)
     {
         scope.WriteLine(
@@ -244,21 +275,22 @@ public class SourceCodeGenerator
             $"[System.CodeDom.Compiler.GeneratedCode(\"{AssemblyName.Name}\",\"{AssemblyName.Version}\")]");
     }
 
-    private void WriteServiceFactoryInitialization(ICodeWriterScope scope, InjectableService service)
+    private void WriteServiceFactoryInitialization(ICodeWriterScope scope, InjectableService service, bool isPrimary)
     {
         if (service.Lifetime != ServiceLifetime.Transient)
-            scope.WriteLine($"{GetServiceFieldName(service.InterfaceType)} = new System.Lazy<{service.InterfaceType}>({GetFactoryMethodName(service)});");
-        scope.WriteLine(
-            $"_factory[typeof({service.InterfaceType.ToDisplayString()})] = {GetResolutionMethodName(service.InterfaceType)};");
+            scope.WriteLine($"{GetServiceFieldName(service, isPrimary)} = new System.Lazy<{service.InterfaceType}>({GetFactoryMethodName(service, isPrimary)});");
+        if (isPrimary)
+            scope.WriteLine($"_factory[typeof({service.InterfaceType.ToDisplayString()})] = {GetResolutionMethodName(service, isPrimary)};");
     }
 
-    private void WriteServiceFactoryMethod(ICodeWriterScope scope, InjectableService service)
+    private void WriteServiceFactoryMethod(ICodeWriterScope scope, InjectableService service, bool isPrimary,
+        ILookup<ITypeSymbol, (InjectableService Service, bool IsPrimary)> serviceLookup)
     {
         if (service.CustomFactory != null)
             return;
 
         using var methodScope = scope.CreateScope(
-            $"private {service.InterfaceType.ToDisplayString()} {GetFactoryMethodName(service)}()");
+            $"private {service.InterfaceType.ToDisplayString()} {GetFactoryMethodName(service, isPrimary)}()");
         var disposablePrefix = service.DisposeType switch
         {
             DisposeType.Async => "AddAsyncDisposable(",
@@ -274,7 +306,18 @@ public class SourceCodeGenerator
         {
             methodScope.WriteLine($"return {disposablePrefix}new {service.ImplementationType.ToDisplayString()}(");
             var parameters = service.ConstructorArguments.Select((parameter, i) =>
-                $"    {GetResolutionMethodName(parameter)}(){(i == service.ConstructorArguments.Length - 1 ? "" : ",")}");
+            {
+                if (parameter.IsGenericType &&
+                    SymbolEqualityComparer.Default.Equals(_enumerableSymbol, parameter.OriginalDefinition))
+                {
+                    var elementType = parameter.TypeArguments[0];
+                    return
+                        $"    {GetEnumerableResolutionMethodName(elementType)}(){(i == service.ConstructorArguments.Length - 1 ? "" : ",")}";
+                }
+                var paramService = serviceLookup[parameter].Single(svc => svc.IsPrimary);
+                return
+                    $"    {GetResolutionMethodName(paramService.Service, paramService.IsPrimary)}(){(i == service.ConstructorArguments.Length - 1 ? "" : ",")}";
+            });
             foreach (var parameter in parameters)
                 methodScope.WriteLine(parameter);
             methodScope.WriteLine($"){disposableSuffix};");
@@ -284,27 +327,27 @@ public class SourceCodeGenerator
                 $"return {disposablePrefix}new {service.ImplementationType.ToDisplayString()}(){disposableSuffix};");
     }
 
-    private static void WriteServiceFields(ICodeWriterScope scope, IEnumerable<InjectableService> services)
+    private static void WriteServiceFields(ICodeWriterScope scope, IEnumerable<(InjectableService Service, bool IsPrimary)> services)
     {
         foreach (var service in services)
         {
             scope.WriteLine(
-                $"private readonly System.Lazy<{service.InterfaceType}> {GetServiceFieldName(service.InterfaceType)};");
+                $"private readonly System.Lazy<{service.Service.InterfaceType}> {GetServiceFieldName(service.Service, service.IsPrimary)};");
         }
     }
 
-    private void WriteServiceResolutionMethod(ICodeWriterScope scope, InjectableService service,
+    private void WriteServiceResolutionMethod(ICodeWriterScope scope, InjectableService service, bool isPrimary,
         ResolutionTarget resolutionTarget)
     {
         if (service.Lifetime == ServiceLifetime.Transient)
             return;
 
         using var methodScope = scope.CreateScope(
-            $"private {service.InterfaceType.ToDisplayString()} {GetResolutionMethodName(service.InterfaceType)}()");
+            $"private {service.InterfaceType.ToDisplayString()} {GetResolutionMethodName(service, isPrimary)}()");
         if (service.Lifetime == ServiceLifetime.Singleton && resolutionTarget == ResolutionTarget.Scope)
-            methodScope.WriteLine($"return _root.{GetResolutionMethodName(service.InterfaceType)}();");
+            methodScope.WriteLine($"return _root.{GetResolutionMethodName(service, isPrimary)}();");
         else
-            methodScope.WriteLine($"return {GetServiceFieldName(service.InterfaceType)}.Value;");
+            methodScope.WriteLine($"return {GetServiceFieldName(service, isPrimary)}.Value;");
     }
 
     private enum ResolutionTarget
