@@ -159,7 +159,7 @@ public class ServiceProviderProcessor
         while (services.Count > 0)
         {
             var service = services.Dequeue();
-            if (ServiceHasBeenProcessed(service.InterfaceType))
+            if (ServiceHasBeenProcessed(service.InterfaceType) || ServiceHasBeenProcessed(service.ImplementationType))
                 continue;
             var disposeType = DisposeType.None;
             if (service.ImplementationType.AllInterfaces.Any(symbol =>
@@ -182,9 +182,9 @@ public class ServiceProviderProcessor
                             : type;
                     return providedByCollectionHashSet.Contains(resolvedType) || validServices.Contains(resolvedType);
                 });
-            identifiedServices[service.ImplementationType] = new InjectableService(service.InterfaceType,
+            identifiedServices.Add(service.ImplementationType,  new InjectableService(service.InterfaceType,
                 service.ImplementationType, service.Lifetime, constructorArguments, disposeType, service.CustomFactory,
-                service.Priority);
+                service.Priority));
             foreach (var argument in constructorArguments)
             {
                 if (ServiceHasBeenProcessed(argument))
