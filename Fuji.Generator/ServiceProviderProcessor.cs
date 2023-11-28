@@ -12,6 +12,7 @@ public class ServiceProviderProcessor
     private readonly INamedTypeSymbol _disposableSymbol;
     private readonly INamedTypeSymbol _enumerableSymbol;
     private readonly ImmutableArray<AttributedSymbol> _libraryCandidates;
+    private readonly INamedTypeSymbol _obsoleteSymbol;
     private readonly ImmutableArray<(INamedTypeSymbol Symbol, ServiceLifetime Lifetime)> _provideAttributes;
     private readonly INamedTypeSymbol _providedByCollectionAttribute;
     private readonly INamedTypeSymbol _provideServiceAttribute;
@@ -29,6 +30,7 @@ public class ServiceProviderProcessor
         _asyncDisposableSymbol = compilation.GetRequiredTypeByMetadataName("System.IAsyncDisposable");
         _disposableSymbol = compilation.GetRequiredTypeByMetadataName("System.IDisposable");
         _enumerableSymbol = compilation.GetRequiredTypeByMetadataName("System.Collections.Generic.IEnumerable`1");
+        _obsoleteSymbol = compilation.GetRequiredTypeByMetadataName("System.ObsoleteAttribute");
         _serviceProviderAttributeType = compilation.GetRequiredTypeByMetadataName(AttributeNames.ServiceProvider);
         _serviceCollectionBuilderAttributeType = compilation.GetRequiredTypeByMetadataName(AttributeNames.ServiceCollectionBuilder);
         _transientServiceAttribute = compilation.GetRequiredTypeByMetadataName(AttributeNames.TransientService);
@@ -182,9 +184,14 @@ public class ServiceProviderProcessor
                             : type;
                     return providedByCollectionHashSet.Contains(resolvedType) || validServices.Contains(resolvedType);
                 });
+            var hasObsoleteAttribute =
+                service.InterfaceType.GetAttributes().Any(r =>
+                    SymbolEqualityComparer.Default.Equals(_obsoleteSymbol, r.AttributeClass)) ||
+                service.ImplementationType.GetAttributes().Any(r =>
+                    SymbolEqualityComparer.Default.Equals(_obsoleteSymbol, r.AttributeClass));
             identifiedServices.Add(service.ImplementationType,  new InjectableService(service.InterfaceType,
                 service.ImplementationType, service.Lifetime, constructorArguments, disposeType, service.CustomFactory,
-                service.Priority));
+                service.Priority, hasObsoleteAttribute));
             foreach (var argument in constructorArguments)
             {
                 if (ServiceHasBeenProcessed(argument))

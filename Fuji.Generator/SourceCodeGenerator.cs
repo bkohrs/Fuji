@@ -39,6 +39,8 @@ public class SourceCodeGenerator
                 {
                     foreach (var service in _definition.ProvidedServices.OrderBy(service => service.Priority))
                     {
+                        if (service.HasObsoleteAttribute)
+                            methodScope.WriteLine("#pragma warning disable CS0612");
                         switch (service.Lifetime)
                         {
                             case ServiceLifetime.Transient:
@@ -66,6 +68,8 @@ public class SourceCodeGenerator
                                     $"serviceCollection.AddScoped(typeof({service.InterfaceType.ToDisplayString()}), typeof({service.ImplementationType.ToDisplayString()}));");
                                 break;
                         }
+                        if (service.HasObsoleteAttribute)
+                            methodScope.WriteLine("#pragma warning enable CS0612");
                     }
                 }
             }

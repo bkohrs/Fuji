@@ -10,4 +10,5 @@ public record struct InjectableService(
     ImmutableArray<INamedTypeSymbol> ConstructorArguments,
     DisposeType DisposeType,
     IMethodSymbol? CustomFactory,
-    int Priority);
+    int Priority,
+    bool HasObsoleteAttribute);

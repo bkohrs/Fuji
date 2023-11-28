@@ -400,6 +400,38 @@ public partial class ServiceCollectionBuilder {}
     }
 
     [Test]
+    public async Task ServiceCollectionBuilder_ObsoleteInterface()
+    {
+        await RunGenerator(@"
+namespace Test;
+
+[System.Obsolete]
+public interface IService {}
+public class Service : IService {}
+
+[Fuji.ServiceCollectionBuilder]
+[Fuji.ProvideTransient(typeof(IService), typeof(Service))]
+public partial class ServiceCollectionBuilder {}
+").ConfigureAwait(false);
+    }
+
+    [Test]
+    public async Task ServiceCollectionBuilder_ObsoleteImplementation()
+    {
+        await RunGenerator(@"
+namespace Test;
+
+public interface IService {}
+[System.Obsolete]
+public class Service : IService {}
+
+[Fuji.ServiceCollectionBuilder]
+[Fuji.ProvideTransient(typeof(IService), typeof(Service))]
+public partial class ServiceCollectionBuilder {}
+").ConfigureAwait(false);
+    }
+
+    [Test]
     public async Task ServiceProvider_MultipleTransientServicesWithSameInterface_Priority()
     {
         await RunGenerator(@"
