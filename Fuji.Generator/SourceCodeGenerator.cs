@@ -69,7 +69,7 @@ public class SourceCodeGenerator
                                 break;
                         }
                         if (service.HasObsoleteAttribute)
-                            methodScope.WriteLine("#pragma warning enable CS0612");
+                            methodScope.WriteLine("#pragma warning restore CS0612");
                     }
                 }
             }

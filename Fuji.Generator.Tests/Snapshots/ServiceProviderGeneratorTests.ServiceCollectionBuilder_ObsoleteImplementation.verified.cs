@@ -10,7 +10,7 @@ namespace Test
         {
             #pragma warning disable CS0612
             serviceCollection.AddTransient(typeof(Test.IService), typeof(Test.Service));
-            #pragma warning enable CS0612
+            #pragma warning restore CS0612
         }
     }
 }
