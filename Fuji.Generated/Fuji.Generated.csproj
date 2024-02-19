@@ -10,8 +10,8 @@
 
     <ItemGroup>
       <PackageReference Include="Fuji.Generator" Version="1.0.2" />
-      <PackageReference Include="JetBrains.Annotations" Version="2021.3.0" />
-      <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="6.0.0" />
+      <PackageReference Include="JetBrains.Annotations" Version="2023.3.0" />
+      <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0" />
     </ItemGroup>
 
     <ItemGroup>
