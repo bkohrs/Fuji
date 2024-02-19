@@ -1,3 +1,3 @@
 ﻿namespace Fuji.Generated;
 
-public class SingletonService : ISingletonService {}
+public class SingletonService : ISingletonService;

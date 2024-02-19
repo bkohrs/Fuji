@@ -1,3 +1,3 @@
 ﻿namespace Fuji.Generated;
 
-public class ScopedService : IScopedService {}
+public class ScopedService : IScopedService;

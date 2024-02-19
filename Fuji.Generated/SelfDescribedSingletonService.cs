@@ -1,4 +1,4 @@
 ﻿namespace Fuji.Generated;
 
 [SingletonService]
-public class SelfDescribedSingletonService {}
+public class SelfDescribedSingletonService;

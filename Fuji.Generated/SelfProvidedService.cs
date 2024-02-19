@@ -3,4 +3,4 @@
 [ProvideService(typeof(ExampleServiceProvider))]
 [ProvideService(typeof(ExampleServiceCollectionBuilder))]
 [TransientService]
-public class SelfProvidedService {}
+public class SelfProvidedService;

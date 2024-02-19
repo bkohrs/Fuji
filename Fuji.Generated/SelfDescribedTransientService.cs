@@ -1,4 +1,4 @@
 ﻿namespace Fuji.Generated;
 
 [TransientService]
-public class SelfDescribedTransientService {}
+public class SelfDescribedTransientService;

@@ -1,3 +1,3 @@
 ﻿namespace Fuji.Generated;
 
-public class CollectionProvidedService {}
+public class CollectionProvidedService;

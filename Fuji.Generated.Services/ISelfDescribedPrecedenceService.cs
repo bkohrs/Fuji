@@ -1,3 +1,3 @@
 ﻿namespace Fuji.Generated.Services;
 
-public interface ISelfDescribedPrecedenceService {}
+public interface ISelfDescribedPrecedenceService;

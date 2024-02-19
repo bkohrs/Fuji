@@ -2,5 +2,4 @@
 
 namespace Fuji.Generated;
 
-public class CustomPrecedenceService : ISelfDescribedPrecedenceService
-{}
+public class CustomPrecedenceService : ISelfDescribedPrecedenceService;

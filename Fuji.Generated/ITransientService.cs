@@ -1,3 +1,3 @@
 ﻿namespace Fuji.Generated;
 
-public interface ITransientService {}
+public interface ITransientService;

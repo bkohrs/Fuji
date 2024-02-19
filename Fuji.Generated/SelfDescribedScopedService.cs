@@ -1,4 +1,4 @@
 ﻿namespace Fuji.Generated;
 
 [ScopedService]
-public class SelfDescribedScopedService {}
+public class SelfDescribedScopedService;

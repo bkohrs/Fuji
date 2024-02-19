@@ -1,3 +1,3 @@
 ﻿namespace Fuji.Generated.Services;
 
-public class DependentLibraryService {}
+public class DependentLibraryService;

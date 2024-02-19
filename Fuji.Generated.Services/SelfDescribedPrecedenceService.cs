@@ -1,4 +1,4 @@
 ﻿namespace Fuji.Generated.Services;
 
 [TransientService]
-public class SelfDescribedPrecedenceService : ISelfDescribedPrecedenceService {}
+public class SelfDescribedPrecedenceService : ISelfDescribedPrecedenceService;
