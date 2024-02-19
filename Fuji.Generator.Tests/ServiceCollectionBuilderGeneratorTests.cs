@@ -7,11 +7,10 @@ using Microsoft.CodeAnalysis.Testing;
 namespace Fuji.Generator.Tests;
 
 [TestFixture]
-public class ServiceProviderGeneratorTests
+public class ServiceCollectionBuilderGeneratorTests
 {
     public enum GeneratorType
     {
-        ServiceProvider,
         ServiceCollectionBuilder,
     }
 
@@ -165,23 +164,6 @@ public class ServiceProviderGeneratorTests
             }
         }
 
-        yield return new GenerateTestCase("ServiceProvider_DisposableClass",
-            ImmutableArray.Create(new GeneratedProvider("ServiceProvider", GeneratorType.ServiceProvider,
-                ImmutableArray.Create(new ProvidedService("", "Service", ServiceLifetime.Singleton)))),
-            ImmutableArray.Create(new Service("", "Service", ServiceLifetime.None, ImmutableArray<string>.Empty, DisposeType.Sync)));
-
-        yield return new GenerateTestCase("ServiceProvider_AsyncDisposableClass",
-            ImmutableArray.Create(new GeneratedProvider("ServiceProvider", GeneratorType.ServiceProvider,
-                ImmutableArray.Create(new ProvidedService("", "Service", ServiceLifetime.Transient)))),
-            ImmutableArray.Create(new Service("", "Service", ServiceLifetime.None, ImmutableArray<string>.Empty, DisposeType.Async)));
-
-        yield return new GenerateTestCase("ServiceProvider_Class_WithMissingDependency",
-            ImmutableArray.Create(new GeneratedProvider("ServiceProvider", GeneratorType.ServiceProvider,
-                ImmutableArray.Create(new ProvidedService("", "Service1", ServiceLifetime.Transient)))),
-            ImmutableArray.Create(
-                new Service("", "Service1", ServiceLifetime.None, ImmutableArray.Create("Service2")))
-        );
-
         yield return new GenerateTestCase("ServiceCollectionBuilder_Class_WithMissingDependency",
             ImmutableArray.Create(new GeneratedProvider("ServiceCollectionBuilder", GeneratorType.ServiceCollectionBuilder,
                 ImmutableArray.Create(new ProvidedService("", "Service1", ServiceLifetime.Transient)))),
@@ -195,26 +177,6 @@ public class ServiceProviderGeneratorTests
     {
         var code = GenerateCode(testCase);
         await RunGenerator(code).ConfigureAwait(false);
-    }
-
-    [Test]
-    public async Task ServiceProvider_CustomFactory()
-    {
-        await RunGenerator(@"
-namespace Test;
-
-public class Service {}
-
-[Fuji.ServiceProvider]
-[Fuji.ProvideSingleton(typeof(Service), Factory = nameof(CustomFactory))]
-public partial class ServiceProvider
-{
-    private Service CustomFactory()
-    {
-        return new Service();
-    }
-}
-").ConfigureAwait(false);
     }
 
     [Test]
@@ -278,20 +240,6 @@ public partial class ServiceCollectionBuilder {}
     }
 
     [Test]
-    public async Task ServiceProvider_IncludeAllServices()
-    {
-        await RunGenerator(@"
-namespace Test;
-
-[Fuji.TransientService]
-public class Service {}
-
-[Fuji.ServiceProvider(IncludeAllServices = true)]
-public partial class ServiceProvider {}
-").ConfigureAwait(false);
-    }
-
-    [Test]
     public async Task ServiceCollectionBuilder_IncludeAllServices()
     {
         await RunGenerator(@"
@@ -319,22 +267,6 @@ public class Service {}
 public partial class ServiceCollectionBuilder {}
 ").ConfigureAwait(false);
     }
-
-    [Test]
-    public async Task ServiceProvider_ProvideService()
-    {
-        await RunGenerator(@"
-namespace Test;
-
-[Fuji.TransientService]
-[Fuji.ProvideService(typeof(ServiceProvider))]
-public class Service {}
-
-[Fuji.ServiceProvider]
-public partial class ServiceProvider {}
-").ConfigureAwait(false);
-    }
-
     [Test]
     public async Task ServiceCollectionBuilder_MultipleServicesWithSameInterface_Priority()
     {
@@ -431,152 +363,6 @@ public partial class ServiceCollectionBuilder {}
 ").ConfigureAwait(false);
     }
 
-    [Test]
-    public async Task ServiceProvider_MultipleTransientServicesWithSameInterface_Priority()
-    {
-        await RunGenerator(@"
-namespace Test;
-
-public interface IService {}
-public class Service1 : IService {}
-public class Service2 : IService {}
-public class Service3 : IService {}
-
-[Fuji.ServiceProvider]
-[Fuji.ProvideTransient(typeof(IService), typeof(Service1), Priority = 1)]
-[Fuji.ProvideTransient(typeof(IService), typeof(Service2), Priority = 2)]
-[Fuji.ProvideTransient(typeof(IService), typeof(Service3))]
-public partial class ServiceProvider {}
-").ConfigureAwait(false);
-    }
-
-    [Test]
-    public async Task ServiceProvider_MultipleSelfDescribedTransientServicesWithSameInterface_Priority()
-    {
-        await RunGenerator(@"
-namespace Test;
-
-public interface IService {}
-
-[Fuji.TransientService(typeof(IService), Priority = 1)]
-public class Service1 : IService {}
-
-[Fuji.TransientService(typeof(IService), Priority = 2)]
-public class Service2 : IService {}
-
-[Fuji.TransientService(typeof(IService))]
-public class Service3 : IService {}
-
-[Fuji.ServiceProvider(IncludeAllServices = true)]
-public partial class ServiceProvider {}
-").ConfigureAwait(false);
-    }
-
-    [Test]
-    public async Task ServiceProvider_MultipleScopedServicesWithSameInterface_Priority()
-    {
-        await RunGenerator(@"
-namespace Test;
-
-public interface IService {}
-public class Service1 : IService {}
-public class Service2 : IService {}
-public class Service3 : IService {}
-
-[Fuji.ServiceProvider]
-[Fuji.ProvideScoped(typeof(IService), typeof(Service1), Priority = 1)]
-[Fuji.ProvideScoped(typeof(IService), typeof(Service2), Priority = 2)]
-[Fuji.ProvideScoped(typeof(IService), typeof(Service3))]
-public partial class ServiceProvider {}
-").ConfigureAwait(false);
-    }
-
-    [Test]
-    public async Task ServiceProvider_MultipleSelfDescribedScopedServicesWithSameInterface_Priority()
-    {
-        await RunGenerator(@"
-namespace Test;
-
-public interface IService {}
-
-[Fuji.ScopedService(typeof(IService), Priority = 1)]
-public class Service1 : IService {}
-
-[Fuji.ScopedService(typeof(IService), Priority = 2)]
-public class Service2 : IService {}
-
-[Fuji.ScopedService(typeof(IService))]
-public class Service3 : IService {}
-
-[Fuji.ServiceProvider(IncludeAllServices = true)]
-public partial class ServiceProvider {}
-").ConfigureAwait(false);
-    }
-
-    [Test]
-    public async Task ServiceProvider_MultipleSingletonServicesWithSameInterface_Priority()
-    {
-        await RunGenerator(@"
-namespace Test;
-
-public interface IService {}
-public class Service1 : IService {}
-public class Service2 : IService {}
-public class Service3 : IService {}
-
-[Fuji.ServiceProvider]
-[Fuji.ProvideSingleton(typeof(IService), typeof(Service1), Priority = 1)]
-[Fuji.ProvideSingleton(typeof(IService), typeof(Service2), Priority = 2)]
-[Fuji.ProvideSingleton(typeof(IService), typeof(Service3))]
-public partial class ServiceProvider {}
-").ConfigureAwait(false);
-    }
-
-    [Test]
-    public async Task ServiceProvider_MultipleSelfDescribedSingletonServicesWithSameInterface_Priority()
-    {
-        await RunGenerator(@"
-namespace Test;
-
-public interface IService {}
-
-[Fuji.SingletonService(typeof(IService), Priority = 1)]
-public class Service1 : IService {}
-
-[Fuji.SingletonService(typeof(IService), Priority = 2)]
-public class Service2 : IService {}
-
-[Fuji.SingletonService(typeof(IService))]
-public class Service3 : IService {}
-
-[Fuji.ServiceProvider(IncludeAllServices = true)]
-public partial class ServiceProvider {}
-").ConfigureAwait(false);
-    }
-
-    [Test]
-    public async Task ServiceProvider_ServiceDependsOnEnumerableOfService()
-    {
-        await RunGenerator(@"
-namespace Test;
-
-public interface IDependency {}
-public class Dependency1 : IDependency {}
-public class Dependency2 : IDependency {}
-public interface IService {}
-public class Service : IService
-{
-    public Service(System.Collections.Generic.IEnumerable<IDependency> dependencies) {}
-}
-
-[Fuji.ServiceProvider]
-[Fuji.ProvideTransient(typeof(IDependency), typeof(Dependency1))]
-[Fuji.ProvideTransient(typeof(IDependency), typeof(Dependency2))]
-[Fuji.ProvideTransient(typeof(IService), typeof(Service))]
-public partial class ServiceProvider {}
-").ConfigureAwait(false);
-    }
-
     private string GenerateCode(GenerateTestCase testCase)
     {
         var builder = new StringBuilder();
@@ -640,10 +426,10 @@ public partial class ServiceProvider {}
         var referenceAssemblies = await ReferenceAssemblies.Default
             .ResolveAsync(LanguageNames.CSharp, CancellationToken.None).ConfigureAwait(false);
         var assemblies = referenceAssemblies.Add(
-            MetadataReference.CreateFromFile(typeof(ServiceProviderAttribute).Assembly.Location));
+            MetadataReference.CreateFromFile(typeof(ServiceCollectionBuilderAttribute).Assembly.Location));
 
         var compilation = CSharpCompilation.Create("name", new[] { CSharpSyntaxTree.ParseText(code) }, assemblies);
-        var generator = new ServiceProviderGenerator();
+        var generator = new ServiceCollectionBuilderGenerator();
         GeneratorDriver driver = CSharpGeneratorDriver.Create(generator);
         driver = driver.RunGenerators(compilation);
         await Verify(driver)

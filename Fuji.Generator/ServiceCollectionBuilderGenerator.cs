@@ -5,7 +5,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 namespace Fuji;
 
 [Generator]
-public class ServiceProviderGenerator : IIncrementalGenerator
+public class ServiceCollectionBuilderGenerator : IIncrementalGenerator
 {
     private void Generate(SourceProductionContext sourceProductionContext, Compilation compilation,
         ImmutableArray<TypeDeclarationSyntax?> typeDeclarationSyntaxes)
@@ -19,7 +19,7 @@ public class ServiceProviderGenerator : IIncrementalGenerator
             .Distinct()
             .ToImmutableArray();
 
-        var processor = new ServiceProviderProcessor(compilation, sourceProductionContext);
+        var processor = new ServiceCollectionBuilderProcessor(compilation, sourceProductionContext);
         processor.Process(distinctTypes);
     }
 
@@ -45,8 +45,7 @@ public class ServiceProviderGenerator : IIncrementalGenerator
                             var attributeTypeSymbol = generatorSyntaxContext.SemanticModel
                                 .GetSymbolInfo(attributeSyntax).Symbol?.ContainingType;
                             var attributeDisplayName = attributeTypeSymbol?.ToDisplayString();
-                            if (attributeDisplayName == AttributeNames.ServiceProvider ||
-                                attributeDisplayName == AttributeNames.ServiceCollectionBuilder ||
+                            if (attributeDisplayName == AttributeNames.ServiceCollectionBuilder ||
                                 attributeDisplayName == AttributeNames.TransientService ||
                                 attributeDisplayName == AttributeNames.ScopedService ||
                                 attributeDisplayName == AttributeNames.SingletonService)

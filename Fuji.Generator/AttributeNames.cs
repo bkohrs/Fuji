@@ -8,7 +8,6 @@ public static class AttributeNames
     public const string ProvideTransient = "Fuji.ProvideTransientAttribute";
     public const string ScopedService = "Fuji.ScopedServiceAttribute";
     public const string ServiceCollectionBuilder = "Fuji.ServiceCollectionBuilderAttribute";
-    public const string ServiceProvider = "Fuji.ServiceProviderAttribute";
     public const string SingletonService = "Fuji.SingletonServiceAttribute";
     public const string TransientService = "Fuji.TransientServiceAttribute";
 }

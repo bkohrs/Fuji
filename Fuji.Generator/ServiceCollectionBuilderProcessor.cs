@@ -4,12 +4,10 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Fuji;
 
-public class ServiceProviderProcessor
+public class ServiceCollectionBuilderProcessor
 {
-    private readonly INamedTypeSymbol _asyncDisposableSymbol;
     private readonly ImmutableArray<INamedTypeSymbol> _attributeTypeSymbols;
     private readonly Compilation _compilation;
-    private readonly INamedTypeSymbol _disposableSymbol;
     private readonly INamedTypeSymbol _enumerableSymbol;
     private readonly ImmutableArray<AttributedSymbol> _libraryCandidates;
     private readonly INamedTypeSymbol _obsoleteSymbol;
@@ -18,20 +16,16 @@ public class ServiceProviderProcessor
     private readonly INamedTypeSymbol _provideServiceAttribute;
     private readonly INamedTypeSymbol _scopedServiceAttribute;
     private readonly INamedTypeSymbol _serviceCollectionBuilderAttributeType;
-    private readonly INamedTypeSymbol _serviceProviderAttributeType;
     private readonly INamedTypeSymbol _singletonServiceAttribute;
     private readonly SourceProductionContext _sourceProductionContext;
     private readonly INamedTypeSymbol _transientServiceAttribute;
 
-    public ServiceProviderProcessor(Compilation compilation, SourceProductionContext sourceProductionContext)
+    public ServiceCollectionBuilderProcessor(Compilation compilation, SourceProductionContext sourceProductionContext)
     {
         _compilation = compilation;
         _sourceProductionContext = sourceProductionContext;
-        _asyncDisposableSymbol = compilation.GetRequiredTypeByMetadataName("System.IAsyncDisposable");
-        _disposableSymbol = compilation.GetRequiredTypeByMetadataName("System.IDisposable");
         _enumerableSymbol = compilation.GetRequiredTypeByMetadataName("System.Collections.Generic.IEnumerable`1");
         _obsoleteSymbol = compilation.GetRequiredTypeByMetadataName("System.ObsoleteAttribute");
-        _serviceProviderAttributeType = compilation.GetRequiredTypeByMetadataName(AttributeNames.ServiceProvider);
         _serviceCollectionBuilderAttributeType = compilation.GetRequiredTypeByMetadataName(AttributeNames.ServiceCollectionBuilder);
         _transientServiceAttribute = compilation.GetRequiredTypeByMetadataName(AttributeNames.TransientService);
         _singletonServiceAttribute = compilation.GetRequiredTypeByMetadataName(AttributeNames.SingletonService);
@@ -43,7 +37,6 @@ public class ServiceProviderProcessor
             (compilation.GetRequiredTypeByMetadataName(AttributeNames.ProvideSingleton), ServiceLifetime.Singleton),
             (compilation.GetRequiredTypeByMetadataName(AttributeNames.ProvideScoped), ServiceLifetime.Scoped));
         _attributeTypeSymbols = ImmutableArray.Create(
-            _serviceProviderAttributeType,
             _serviceCollectionBuilderAttributeType,
             _transientServiceAttribute,
             _singletonServiceAttribute,
@@ -69,7 +62,7 @@ public class ServiceProviderProcessor
     private void GenerateCode(AttributedSymbol provider,
         ImmutableArray<InjectionCandidate> selfDescribedServices,
         INamedTypeSymbol? providedByCollectionAttribute,
-        Func<ServiceProviderDefinition, string> generateContent)
+        Func<ServiceCollectionBuilderDefinition, string> generateContent)
     {
         var injectionCandidates =
             GetInjectionCandidates(provider.Symbol,
@@ -87,12 +80,12 @@ public class ServiceProviderProcessor
         if (diagnosticReporter.HasError)
             return;
 
-        var definition = new ServiceProviderDefinition(provider.Symbol, injectableServices);
+        var definition = new ServiceCollectionBuilderDefinition(provider.Symbol, injectableServices);
 
         var fileContent = generateContent(definition);
         if (string.IsNullOrWhiteSpace(fileContent))
             return;
-        var fileName = $"{definition.ServiceProviderType.ToDisplayString()}.generated.cs";
+        var fileName = $"{definition.ServiceCollectionBuilderType.ToDisplayString()}.generated.cs";
         _sourceProductionContext.AddSource(fileName, fileContent);
     }
 
@@ -153,17 +146,6 @@ public class ServiceProviderProcessor
             var service = services.Dequeue();
             if (ServiceHasBeenProcessed(service.InterfaceType) || ServiceHasBeenProcessed(service.ImplementationType))
                 continue;
-            var disposeType = DisposeType.None;
-            if (service.ImplementationType.AllInterfaces.Any(symbol =>
-                    SymbolEqualityComparer.Default.Equals(symbol, _asyncDisposableSymbol)))
-            {
-                disposeType = DisposeType.Async;
-            }
-            else if (service.ImplementationType.AllInterfaces.Any(symbol =>
-                         SymbolEqualityComparer.Default.Equals(symbol, _disposableSymbol)))
-            {
-                disposeType = DisposeType.Sync;
-            }
             var constructorArguments = GetConstructorArguments(diagnosticReporter, providerType, service,
                 type =>
                 {
@@ -180,7 +162,7 @@ public class ServiceProviderProcessor
                 service.ImplementationType.GetAttributes().Any(r =>
                     SymbolEqualityComparer.Default.Equals(_obsoleteSymbol, r.AttributeClass));
             identifiedServices.Add(service.ImplementationType,  new InjectableService(service.InterfaceType,
-                service.ImplementationType, service.Lifetime, constructorArguments, disposeType, service.CustomFactory,
+                service.ImplementationType, service.Lifetime, service.CustomFactory,
                 service.Priority, hasObsoleteAttribute));
             foreach (var argument in constructorArguments)
             {
@@ -297,9 +279,9 @@ public class ServiceProviderProcessor
         }
     }
 
-    public void Process(ImmutableArray<TypeDeclarationSyntax> serviceProviderTypes)
+    public void Process(ImmutableArray<TypeDeclarationSyntax> serviceCollectionBuilderTypes)
     {
-        var partitionedTypes = ResolveTypes(serviceProviderTypes)
+        var partitionedTypes = ResolveTypes(serviceCollectionBuilderTypes)
             .Concat(_libraryCandidates)
             .ToLookup(type => type.Attribute.AttributeClass, SymbolEqualityComparer.Default);
 
@@ -316,18 +298,12 @@ public class ServiceProviderProcessor
             .Cast<InjectionCandidate>()
             .ToImmutableArray();
 
-        foreach (var provider in partitionedTypes[_serviceProviderAttributeType])
-        {
-            GenerateCode(provider, selfDescribedServices, null,
-                definition =>
-                    new SourceCodeGenerator(definition, _enumerableSymbol).GenerateServiceProvider());
-        }
         foreach (var provider in partitionedTypes[_serviceCollectionBuilderAttributeType])
         {
             GenerateCode(provider, selfDescribedServices,
                 _providedByCollectionAttribute,
                 definition =>
-                    new SourceCodeGenerator(definition, _enumerableSymbol).GenerateServiceCollectionBuilder());
+                    new SourceCodeGenerator(definition).GenerateServiceCollectionBuilder());
         }
     }
 
