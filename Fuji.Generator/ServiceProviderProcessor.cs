@@ -87,22 +87,12 @@ public class ServiceProviderProcessor
         if (diagnosticReporter.HasError)
             return;
 
-        var debugOutputPath =
-            provider.Attribute.NamedArguments.Where(arg => arg.Key == "DebugOutputPath")
-                .Select(arg => arg.Value.Value).FirstOrDefault() as string;
-        var definition = new ServiceProviderDefinition(provider.Symbol, injectableServices,
-            debugOutputPath);
+        var definition = new ServiceProviderDefinition(provider.Symbol, injectableServices);
 
         var fileContent = generateContent(definition);
         if (string.IsNullOrWhiteSpace(fileContent))
             return;
         var fileName = $"{definition.ServiceProviderType.ToDisplayString()}.generated.cs";
-        if (!string.IsNullOrWhiteSpace(definition.DebugOutputPath))
-        {
-            if (!Directory.Exists(definition.DebugOutputPath))
-                Directory.CreateDirectory(definition.DebugOutputPath);
-            File.WriteAllText(Path.Combine(definition.DebugOutputPath, fileName), fileContent);
-        }
         _sourceProductionContext.AddSource(fileName, fileContent);
     }
 
