@@ -9,6 +9,7 @@ public class ServiceCollectionBuilderProcessor
     private readonly ImmutableArray<INamedTypeSymbol> _attributeTypeSymbols;
     private readonly Compilation _compilation;
     private readonly INamedTypeSymbol _enumerableSymbol;
+    private readonly INamedTypeSymbol? _fromKeyedServicesAttribute;
     private readonly ImmutableArray<AttributedSymbol> _libraryCandidates;
     private readonly INamedTypeSymbol _obsoleteSymbol;
     private readonly ImmutableArray<(INamedTypeSymbol Symbol, ServiceLifetime Lifetime)> _provideAttributes;
@@ -25,6 +26,7 @@ public class ServiceCollectionBuilderProcessor
         _compilation = compilation;
         _sourceProductionContext = sourceProductionContext;
         _enumerableSymbol = compilation.GetRequiredTypeByMetadataName("System.Collections.Generic.IEnumerable`1");
+        _fromKeyedServicesAttribute = compilation.GetTypeByMetadataName("Microsoft.Extensions.DependencyInjection.FromKeyedServicesAttribute");
         _obsoleteSymbol = compilation.GetRequiredTypeByMetadataName("System.ObsoleteAttribute");
         _serviceCollectionBuilderAttributeType = compilation.GetRequiredTypeByMetadataName(AttributeNames.ServiceCollectionBuilder);
         _transientServiceAttribute = compilation.GetRequiredTypeByMetadataName(AttributeNames.TransientService);
@@ -56,7 +58,9 @@ public class ServiceCollectionBuilderProcessor
                 : type.Symbol;
         var priority = type.Attribute.NamedArguments.Where(arg => arg.Key == "Priority")
             .Select(arg => Convert.ToInt32(arg.Value.Value)).FirstOrDefault();
-        return new InjectionCandidate(interfaceType, type.Symbol, serviceLifetime, null, priority);
+        var key = type.Attribute.NamedArguments.Where(arg => arg.Key == "Key")
+            .Select(arg => Convert.ToString(arg.Value.Value)).FirstOrDefault();
+        return new InjectionCandidate(interfaceType, type.Symbol, serviceLifetime, key, null, priority);
     }
 
     private void GenerateCode(AttributedSymbol provider,
@@ -69,7 +73,7 @@ public class ServiceCollectionBuilderProcessor
                 GetSelfProvidedServices(provider, selfDescribedServices));
         var providedByCollection = providedByCollectionAttribute != null
             ? GetProvidedByCollectionServices(provider, providedByCollectionAttribute)
-            : Enumerable.Empty<INamedTypeSymbol>();
+            : Enumerable.Empty<(ISymbol, string?)>();
         var includeAllServices =
             Convert.ToBoolean(provider.Attribute.NamedArguments.Where(arg => arg.Key == "IncludeAllServices")
                 .Select(arg => arg.Value.Value).FirstOrDefault());
@@ -89,29 +93,28 @@ public class ServiceCollectionBuilderProcessor
         _sourceProductionContext.AddSource(fileName, fileContent);
     }
 
-    private ImmutableArray<INamedTypeSymbol> GetConstructorArguments(DiagnosticReporter diagnosticReporter,
-        ITypeSymbol providerType, InjectionCandidate service, Func<ITypeSymbol, bool> isValidService)
+    private ImmutableArray<(INamedTypeSymbol Symbol, string? Key)> GetConstructorArguments(DiagnosticReporter diagnosticReporter,
+        ITypeSymbol providerType, InjectionCandidate service, Func<(ITypeSymbol Type, string? Key), bool> isValidService)
     {
         if (service.CustomFactory != null)
-            return ImmutableArray<INamedTypeSymbol>.Empty;
+            return ImmutableArray<(INamedTypeSymbol Symbol, string? Key)>.Empty;
         var constructor = service.ImplementationType.Constructors
             .OrderByDescending(ctor => ctor.Parameters.Length)
             .FirstOrDefault(ctor =>
-                ctor.Parameters.All(parameter => isValidService(parameter.Type)));
+                ctor.Parameters.All(parameter => isValidService((parameter.Type, GetParameterKey(parameter)))));
         if (constructor == null)
         {
             var targetConstructor = service.ImplementationType.Constructors
                 .OrderByDescending(ctor => ctor.Parameters.Length)
                 .First();
-            var missingTypes = targetConstructor.Parameters.Where(parameter => !isValidService(parameter.Type))
-                .Select(parameter => parameter.Type).ToImmutableArray();
+            var missingTypes = targetConstructor.Parameters.Where(parameter => !isValidService((parameter.Type, GetParameterKey(parameter))))
+                .Select(parameter => (parameter.Type, GetParameterKey(parameter))).ToImmutableArray();
             diagnosticReporter.ReportMissingServices(providerType, service.ImplementationType, missingTypes,
                 targetConstructor.Locations.First());
-            return ImmutableArray<INamedTypeSymbol>.Empty;
+            return ImmutableArray<(INamedTypeSymbol Symbol, string? Key)>.Empty;
         }
         return constructor.Parameters
-            .Select(parameter => parameter.Type)
-            .Cast<INamedTypeSymbol>()
+            .Select(parameter => ((INamedTypeSymbol)parameter.Type, GetParameterKey(parameter)))
             .ToImmutableArray();
     }
 
@@ -119,22 +122,22 @@ public class ServiceCollectionBuilderProcessor
         DiagnosticReporter diagnosticReporter, ITypeSymbol providerType,
         ImmutableArray<InjectionCandidate> injectionCandidates,
         ImmutableArray<InjectionCandidate> selfDescribedServices,
-        IEnumerable<INamedTypeSymbol> providedByCollection, bool includeAllServices)
+        IEnumerable<(ISymbol, string? Key)> providedByCollection, bool includeAllServices)
     {
-        var identifiedServices = new Dictionary<ISymbol, InjectableService>(SymbolEqualityComparer.Default);
-        var providedByCollectionHashSet = providedByCollection.ToImmutableHashSet(SymbolEqualityComparer.Default);
+        var identifiedServices = new Dictionary<(ISymbol, string?), InjectableService>(KeyedServiceComparer.Instance);
+        var providedByCollectionHashSet = providedByCollection.ToImmutableHashSet(KeyedServiceComparer.Instance);
 
-        bool ServiceHasBeenProcessed(INamedTypeSymbol symbol)
+        bool ServiceHasBeenProcessed((INamedTypeSymbol Symbol, string? Key) value)
         {
-            return providedByCollectionHashSet.Contains(symbol) || identifiedServices.ContainsKey(symbol);
+            return providedByCollectionHashSet.Contains(value) || identifiedServices.ContainsKey(value);
         }
 
         var validServices = injectionCandidates.Concat(selfDescribedServices)
-            .GroupBy(candidate => candidate.InterfaceType, SymbolEqualityComparer.Default)
+            .GroupBy(candidate => (candidate.InterfaceType, candidate.Key), KeyedServiceComparer.Instance)
             .Select(group => group.Key)
-            .ToImmutableHashSet(SymbolEqualityComparer.Default);
+            .ToImmutableHashSet(KeyedServiceComparer.Instance);
         var serviceLookup = injectionCandidates.Concat(selfDescribedServices)
-            .ToLookup(candidate => candidate.InterfaceType, SymbolEqualityComparer.Default);
+            .ToLookup(candidate => (candidate.InterfaceType, candidate.Key), KeyedServiceComparer.Instance);
         var services = new Queue<InjectionCandidate>(injectionCandidates);
         if (includeAllServices)
         {
@@ -144,26 +147,26 @@ public class ServiceCollectionBuilderProcessor
         while (services.Count > 0)
         {
             var service = services.Dequeue();
-            if (ServiceHasBeenProcessed(service.InterfaceType) || ServiceHasBeenProcessed(service.ImplementationType))
+            if (ServiceHasBeenProcessed((service.InterfaceType, service.Key)) || ServiceHasBeenProcessed((service.ImplementationType, service.Key)))
                 continue;
             var constructorArguments = GetConstructorArguments(diagnosticReporter, providerType, service,
-                type =>
+                (definition) =>
                 {
                     var resolvedType =
-                        type is INamedTypeSymbol { IsGenericType: true } namedType &&
-                        SymbolEqualityComparer.Default.Equals(_enumerableSymbol, type.OriginalDefinition)
+                        definition.Type is INamedTypeSymbol { IsGenericType: true } namedType &&
+                        SymbolEqualityComparer.Default.Equals(_enumerableSymbol, definition.Type.OriginalDefinition)
                             ? namedType.TypeArguments[0]
-                            : type;
-                    return providedByCollectionHashSet.Contains(resolvedType) || validServices.Contains(resolvedType);
+                            : definition.Type;
+                    return providedByCollectionHashSet.Contains((resolvedType, definition.Key)) || validServices.Contains((resolvedType, definition.Key));
                 });
             var hasObsoleteAttribute =
                 service.InterfaceType.GetAttributes().Any(r =>
                     SymbolEqualityComparer.Default.Equals(_obsoleteSymbol, r.AttributeClass)) ||
                 service.ImplementationType.GetAttributes().Any(r =>
                     SymbolEqualityComparer.Default.Equals(_obsoleteSymbol, r.AttributeClass));
-            identifiedServices.Add(service.ImplementationType,  new InjectableService(service.InterfaceType,
+            identifiedServices.Add((service.ImplementationType, service.Key),  new InjectableService(service.InterfaceType,
                 service.ImplementationType, service.Lifetime, service.CustomFactory,
-                service.Priority, hasObsoleteAttribute));
+                service.Key, service.Priority, hasObsoleteAttribute));
             foreach (var argument in constructorArguments)
             {
                 if (ServiceHasBeenProcessed(argument))
@@ -192,6 +195,8 @@ public class ServiceCollectionBuilderProcessor
                         .Select(arg => arg.Value.Value as string).FirstOrDefault();
                     var priority = provideAttribute.NamedArguments.Where(arg => arg.Key == "Priority")
                         .Select(arg => Convert.ToInt32(arg.Value.Value)).FirstOrDefault();
+                    var key = provideAttribute.NamedArguments.Where(arg => arg.Key == "Key")
+                        .Select(arg => Convert.ToString(arg.Value.Value)).FirstOrDefault();
                     var customFactoryMethod = !string.IsNullOrWhiteSpace(customFactory)
                         ? type.GetMembers(customFactory!).FirstOrDefault() as IMethodSymbol
                         : null;
@@ -207,7 +212,7 @@ public class ServiceCollectionBuilderProcessor
                             ? implementationArg
                             : interfaceType;
                     return lifetime != null && interfaceType != null && implementationType != null
-                        ? new InjectionCandidate(interfaceType, implementationType, lifetime.Value, customFactoryMethod,
+                        ? new InjectionCandidate(interfaceType, implementationType, lifetime.Value, key, customFactoryMethod,
                             priority)
                         : null;
                 })
@@ -225,23 +230,36 @@ public class ServiceCollectionBuilderProcessor
             .ToImmutableArray();
     }
 
-    private IEnumerable<INamedTypeSymbol> GetProvidedByCollectionServices(AttributedSymbol provider,
+    private string? GetParameterKey(IParameterSymbol parameter)
+    {
+        var fromKeyedServices = parameter.GetAttributes().FirstOrDefault(attribute =>
+            SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, _fromKeyedServicesAttribute));
+        return fromKeyedServices is { ConstructorArguments.Length: > 0 } &&
+               fromKeyedServices.ConstructorArguments[0] is var typedConstant
+            ? Convert.ToString(typedConstant.Value)
+            : null;
+    }
+
+    private IEnumerable<(ISymbol, string?)> GetProvidedByCollectionServices(AttributedSymbol provider,
         INamedTypeSymbol providedByCollectionAttribute)
     {
-        return provider.Symbol.GetAttributes()
-            .Select<AttributeData, INamedTypeSymbol?>(attribute =>
-            {
-                if (!SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, providedByCollectionAttribute))
-                    return null;
-                if (attribute.ConstructorArguments.Length == 1 &&
-                    attribute.ConstructorArguments[0].Value is INamedTypeSymbol namedTypeSymbol)
+        return from namedTypeSymbol in provider.Symbol.GetAttributes()
+                .Select<AttributeData, (ISymbol Symbol, string? Key)?>(attribute =>
                 {
-                    return namedTypeSymbol;
-                }
-                return null;
-            })
-            .Where(namedTypeSymbol => namedTypeSymbol is not null)
-            .Select(symbol => symbol!);
+                    if (!SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, providedByCollectionAttribute))
+                        return null;
+                    if (attribute.ConstructorArguments.Length == 1 &&
+                        attribute.ConstructorArguments[0].Value is INamedTypeSymbol namedTypeSymbol)
+                    {
+                        var key = attribute.NamedArguments.Where(arg => arg.Key == "Key")
+                            .Select(arg => Convert.ToString(arg.Value.Value)).FirstOrDefault();
+                        return (namedTypeSymbol, key);
+                    }
+
+                    return null;
+                })
+            where namedTypeSymbol != null
+            select namedTypeSymbol.Value;
     }
 
     private ImmutableArray<InjectionCandidate> GetSelfProvidedServices(AttributedSymbol provider,
@@ -327,5 +345,22 @@ public class ServiceCollectionBuilderProcessor
             .Where(symbol => symbol is not null)
             .Cast<AttributedSymbol>()
             .ToImmutableArray();
+    }
+
+    private class KeyedServiceComparer : IEqualityComparer<(ISymbol, string?)>
+    {
+        public static KeyedServiceComparer Instance { get; } = new KeyedServiceComparer();
+        public bool Equals((ISymbol, string?) x, (ISymbol, string?) y)
+        {
+            return SymbolEqualityComparer.Default.Equals(x.Item1, y.Item1) && x.Item2 == y.Item2;
+        }
+
+        public int GetHashCode((ISymbol, string?) obj)
+        {
+            unchecked
+            {
+                return (SymbolEqualityComparer.Default.GetHashCode() * 397) ^ obj.Item2?.GetHashCode() ?? 0;
+            }
+        }
     }
 }

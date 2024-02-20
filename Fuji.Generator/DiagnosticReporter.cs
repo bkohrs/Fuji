@@ -30,10 +30,10 @@ public class DiagnosticReporter
     }
 
     public void ReportMissingServices(ITypeSymbol providerType, ITypeSymbol serviceType,
-        ImmutableArray<ITypeSymbol> missingServices, Location location)
+        ImmutableArray<(ITypeSymbol Symbol, string? Key)> missingServices, Location location)
     {
         _sourceProductionContext.ReportDiagnostic(Diagnostic.Create(MissingServicesDiagnostic, location,
-            string.Join(", ", missingServices.Select(missingType => missingType.ToDisplayString())),
+            string.Join(", ", missingServices.Select(missingType => $"{missingType.Symbol.ToDisplayString()}{(missingType.Key != null ? $"({missingType.Key})" : null)}")),
             serviceType.ToDisplayString(), providerType.ToDisplayString()));
         HasError = true;
     }

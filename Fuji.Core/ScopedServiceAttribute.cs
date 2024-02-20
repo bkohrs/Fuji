@@ -9,5 +9,6 @@ public class ScopedServiceAttribute : Attribute
     }
 
     public Type? InterfaceType { get; }
+    public string? Key { get; set; }
     public int Priority { get; set; }
 }

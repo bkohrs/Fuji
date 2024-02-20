@@ -7,5 +7,6 @@ public record struct InjectableService(
     INamedTypeSymbol ImplementationType,
     ServiceLifetime Lifetime,
     IMethodSymbol? CustomFactory,
+    string? Key,
     int Priority,
     bool HasObsoleteAttribute);

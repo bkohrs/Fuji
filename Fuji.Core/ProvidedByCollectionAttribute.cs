@@ -9,4 +9,5 @@ public class ProvidedByCollectionAttribute : Attribute
     }
 
     public Type InterfaceType { get; }
+    public string? Key { get; set; }
 }

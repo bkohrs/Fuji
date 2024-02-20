@@ -363,6 +363,245 @@ public partial class ServiceCollectionBuilder {}
 ").ConfigureAwait(false);
     }
 
+    [Test]
+    public async Task ServiceCollectionBuilder_TransientKeyedService_StringLiteral()
+    {
+        await RunGenerator(@"
+namespace Test;
+
+public interface IService {}
+[Fuji.TransientService(typeof(IService), Key = ""foo"")]
+public class Service : IService {}
+
+[Fuji.ServiceCollectionBuilder(IncludeAllServices = true)]
+public partial class ServiceCollectionBuilder {}
+").ConfigureAwait(false);
+    }
+
+    [Test]
+    public async Task ServiceCollectionBuilder_TransientKeyedService_Constant()
+    {
+        await RunGenerator(@"
+namespace Test;
+
+public class Constants
+{
+    public const string Key = ""foo"";
+}
+
+public interface IService {}
+[Fuji.TransientService(typeof(IService), Key = Constants.Key)]
+public class Service : IService {}
+
+[Fuji.ServiceCollectionBuilder(IncludeAllServices = true)]
+public partial class ServiceCollectionBuilder {}
+").ConfigureAwait(false);
+    }
+
+    [Test]
+    public async Task ServiceCollectionBuilder_ScopedKeyedService_StringLiteral()
+    {
+        await RunGenerator(@"
+namespace Test;
+
+public interface IService {}
+[Fuji.ScopedService(typeof(IService), Key = ""foo"")]
+public class Service : IService {}
+
+[Fuji.ServiceCollectionBuilder(IncludeAllServices = true)]
+public partial class ServiceCollectionBuilder {}
+").ConfigureAwait(false);
+    }
+
+    [Test]
+    public async Task ServiceCollectionBuilder_SingletonKeyedService_StringLiteral()
+    {
+        await RunGenerator(@"
+namespace Test;
+
+public interface IService {}
+[Fuji.SingletonService(typeof(IService), Key = ""foo"")]
+public class Service : IService {}
+
+[Fuji.ServiceCollectionBuilder(IncludeAllServices = true)]
+public partial class ServiceCollectionBuilder {}
+").ConfigureAwait(false);
+    }
+
+    [Test]
+    public async Task ServiceCollectionBuilder_ProvideTransientKeyedService_StringLiteral()
+    {
+        await RunGenerator(@"
+namespace Test;
+
+public interface IService {}
+public class Service : IService {}
+
+[Fuji.ServiceCollectionBuilder(IncludeAllServices = true)]
+[Fuji.ProvideTransient(typeof(IService), typeof(Service), Key = ""foo"")]
+public partial class ServiceCollectionBuilder {}
+").ConfigureAwait(false);
+    }
+
+    [Test]
+    public async Task ServiceCollectionBuilder_ProvideScopedKeyedService_StringLiteral()
+    {
+        await RunGenerator(@"
+namespace Test;
+
+public interface IService {}
+public class Service : IService {}
+
+[Fuji.ServiceCollectionBuilder(IncludeAllServices = true)]
+[Fuji.ProvideScoped(typeof(IService), typeof(Service), Key = ""foo"")]
+public partial class ServiceCollectionBuilder {}
+").ConfigureAwait(false);
+    }
+
+    [Test]
+    public async Task ServiceCollectionBuilder_ProvideSingletonKeyedService_StringLiteral()
+    {
+        await RunGenerator(@"
+namespace Test;
+
+public interface IService {}
+public class Service : IService {}
+
+[Fuji.ServiceCollectionBuilder(IncludeAllServices = true)]
+[Fuji.ProvideSingleton(typeof(IService), typeof(Service), Key = ""foo"")]
+public partial class ServiceCollectionBuilder {}
+").ConfigureAwait(false);
+    }
+
+    [Test]
+    public async Task ServiceCollectionBuilder_ProvideSingletonKeyedService_CustomFactory()
+    {
+        await RunGenerator(@"
+namespace Test;
+
+public interface IService {}
+public class Service : IService {}
+
+[Fuji.ServiceCollectionBuilder(IncludeAllServices = true)]
+[Fuji.ProvideSingleton(typeof(IService), typeof(Service), Factory = nameof(CreateService), Key = ""foo"")]
+public partial class ServiceCollectionBuilder
+{
+    public IService CreateService()
+    {
+        return new Service();
+    }
+}
+").ConfigureAwait(false);
+    }
+
+    [Test]
+    public async Task ServiceCollectionBuilder_ProvideSingletonKeyedService_CustomFactoryWithProviderAndKey()
+    {
+        await RunGenerator(@"
+#nullable enable
+namespace Test;
+
+public interface IService {}
+public class Service : IService {}
+
+[Fuji.ServiceCollectionBuilder(IncludeAllServices = true)]
+[Fuji.ProvideSingleton(typeof(IService), typeof(Service), Factory = nameof(CreateService), Key = ""foo"")]
+public partial class ServiceCollectionBuilder
+{
+    public IService CreateService(System.IServiceProvider provider, object? key)
+    {
+        return new Service();
+    }
+}
+").ConfigureAwait(false);
+    }
+
+    [Test]
+    public async Task ServiceCollectionBuilder_SatisfiedKeyedServiceDependency_StringLiteral()
+    {
+        await RunGenerator(@"
+namespace Test;
+
+public interface IDependency {}
+[Fuji.TransientService(typeof(IDependency), Key = ""foo"")]
+public class Dependency : IDependency {}
+public interface IService {}
+public class Service : IService
+{
+    public Service([Microsoft.Extensions.DependencyInjection.FromKeyedServices(""foo"")]IDependency dependency) {}
+}
+
+[Fuji.ServiceCollectionBuilder]
+[Fuji.ProvideSingleton(typeof(IService), typeof(Service))]
+public partial class ServiceCollectionBuilder {}
+").ConfigureAwait(false);
+    }
+
+    [Test]
+    public async Task ServiceCollectionBuilder_SatisfiedKeyedServiceDependency_Constant()
+    {
+        await RunGenerator(@"
+namespace Test;
+
+public class Constants
+{
+    public const string Key = ""foo"";
+}
+
+public interface IDependency {}
+[Fuji.TransientService(typeof(IDependency), Key = Constants.Key)]
+public class Dependency : IDependency {}
+public interface IService {}
+public class Service : IService
+{
+    public Service([Microsoft.Extensions.DependencyInjection.FromKeyedServices(Constants.Key)]IDependency dependency) {}
+}
+
+[Fuji.ServiceCollectionBuilder]
+[Fuji.ProvideSingleton(typeof(IService), typeof(Service))]
+public partial class ServiceCollectionBuilder {}
+").ConfigureAwait(false);
+    }
+
+    [Test]
+    public async Task ServiceCollectionBuilder_SatisfiedKeyedServiceDependencyByProvidedByCollection()
+    {
+        await RunGenerator(@"
+namespace Test;
+
+public interface IDependency {}
+public interface IService {}
+public class Service : IService
+{
+    public Service([Microsoft.Extensions.DependencyInjection.FromKeyedServices(""foo"")]IDependency dependency) {}
+}
+
+[Fuji.ServiceCollectionBuilder]
+[Fuji.ProvideSingleton(typeof(IService), typeof(Service))]
+[Fuji.ProvidedByCollection(typeof(IDependency), Key = ""foo"")]
+public partial class ServiceCollectionBuilder {}
+").ConfigureAwait(false);
+    }
+
+    [Test]
+    public async Task ServiceCollectionBuilder_UnsatisfiedKeyedServiceDependency()
+    {
+        await RunGenerator(@"
+namespace Test;
+
+public interface IDependency {}
+public interface IService {}
+public class Service : IService
+{
+    public Service([Microsoft.Extensions.DependencyInjection.FromKeyedServices(""foo"")]IDependency dependency) {}
+}
+
+[Fuji.ServiceCollectionBuilder]
+[Fuji.ProvideSingleton(typeof(IService), typeof(Service))]
+public partial class ServiceCollectionBuilder {}
+").ConfigureAwait(false);
+    }
+
     private string GenerateCode(GenerateTestCase testCase)
     {
         var builder = new StringBuilder();
@@ -428,7 +667,17 @@ public partial class ServiceCollectionBuilder {}
         var assemblies = referenceAssemblies.Add(
             MetadataReference.CreateFromFile(typeof(ServiceCollectionBuilderAttribute).Assembly.Location));
 
-        var compilation = CSharpCompilation.Create("name", new[] { CSharpSyntaxTree.ParseText(code) }, assemblies);
+        var compilation = CSharpCompilation.Create("name", new[]
+        {
+            CSharpSyntaxTree.ParseText(@"
+namespace Microsoft.Extensions.DependencyInjection;
+public class FromKeyedServicesAttribute : System.Attribute
+{
+    public FromKeyedServicesAttribute(object key){}
+}
+"),
+            CSharpSyntaxTree.ParseText(code),
+        }, assemblies);
         var generator = new ServiceCollectionBuilderGenerator();
         GeneratorDriver driver = CSharpGeneratorDriver.Create(generator);
         driver = driver.RunGenerators(compilation);

@@ -42,27 +42,48 @@ public class SourceCodeGenerator
                         {
                             case ServiceLifetime.Transient:
                                 methodScope.WriteLine(
-                                    $"serviceCollection.AddTransient(typeof({service.InterfaceType.ToDisplayString()}), typeof({service.ImplementationType.ToDisplayString()}));");
+                                    service.Key == null
+                                        ? $"serviceCollection.AddTransient(typeof({service.InterfaceType.ToDisplayString()}), typeof({service.ImplementationType.ToDisplayString()}));"
+                                        : $"serviceCollection.AddKeyedTransient(typeof({service.InterfaceType.ToDisplayString()}), \"{service.Key}\", typeof({service.ImplementationType.ToDisplayString()}));");
                                 break;
                             case ServiceLifetime.Singleton:
                                 if (service.CustomFactory != null)
                                 {
-                                    var usesProvider =
-                                        service.CustomFactory.Parameters.Length == 1 &&
-                                        service.CustomFactory.Parameters[0].Type is INamedTypeSymbol paramSymbol &&
-                                        paramSymbol.ToDisplayString() == "System.IServiceProvider";
-                                    methodScope.WriteLine(
-                                        $"serviceCollection.AddSingleton<{service.InterfaceType.ToDisplayString()}>(provider => {service.CustomFactory.Name}({(usesProvider ? "provider" : "")}));");
+                                    if (service.Key == null)
+                                    {
+                                        var usesProvider =
+                                            service.CustomFactory.Parameters.Length == 1 &&
+                                            service.CustomFactory.Parameters[0].Type is INamedTypeSymbol paramSymbol &&
+                                            paramSymbol.ToDisplayString() == "System.IServiceProvider";
+                                        methodScope.WriteLine(
+                                            $"serviceCollection.AddSingleton<{service.InterfaceType.ToDisplayString()}>(provider => {service.CustomFactory.Name}({(usesProvider ? "provider" : "")}));");
+                                    }
+                                    else
+                                    {
+                                        var usesProvider =
+                                            service.CustomFactory.Parameters.Length == 2 &&
+                                            service.CustomFactory.Parameters[0]
+                                                .Type is INamedTypeSymbol providerSymbol &&
+                                            service.CustomFactory.Parameters[1].Type is INamedTypeSymbol keySymbol &&
+                                            providerSymbol.ToDisplayString() == "System.IServiceProvider" &&
+                                            (keySymbol.ToDisplayString() == "object" || keySymbol.ToDisplayString() == "object?");
+                                        methodScope.WriteLine(
+                                            $"serviceCollection.AddKeyedSingleton<{service.InterfaceType.ToDisplayString()}>(\"{service.Key}\", (provider, key) => {service.CustomFactory.Name}({(usesProvider ? "provider, key" : "")}));");
+                                    }
                                 }
                                 else
                                 {
                                     methodScope.WriteLine(
-                                        $"serviceCollection.AddSingleton(typeof({service.InterfaceType.ToDisplayString()}), typeof({service.ImplementationType.ToDisplayString()}));");
+                                        service.Key == null
+                                            ? $"serviceCollection.AddSingleton(typeof({service.InterfaceType.ToDisplayString()}), typeof({service.ImplementationType.ToDisplayString()}));"
+                                            : $"serviceCollection.AddKeyedSingleton(typeof({service.InterfaceType.ToDisplayString()}), \"{service.Key}\", typeof({service.ImplementationType.ToDisplayString()}));");
                                 }
                                 break;
                             case ServiceLifetime.Scoped:
                                 methodScope.WriteLine(
-                                    $"serviceCollection.AddScoped(typeof({service.InterfaceType.ToDisplayString()}), typeof({service.ImplementationType.ToDisplayString()}));");
+                                    service.Key == null
+                                        ? $"serviceCollection.AddScoped(typeof({service.InterfaceType.ToDisplayString()}), typeof({service.ImplementationType.ToDisplayString()}));"
+                                        : $"serviceCollection.AddKeyedScoped(typeof({service.InterfaceType.ToDisplayString()}), \"{service.Key}\", typeof({service.ImplementationType.ToDisplayString()}));");
                                 break;
                         }
                         if (service.HasObsoleteAttribute)
