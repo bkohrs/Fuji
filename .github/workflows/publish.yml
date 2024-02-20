@@ -10,7 +10,7 @@ jobs:
       - uses: actions/checkout@v2
       - uses: actions/setup-dotnet@v1
         with:
-          dotnet-version: '6.0.x'
+          dotnet-version: '8.0.x'
       - name: Pack Fuji.Core
         run: dotnet pack Fuji.Core/Fuji.Core.csproj --configuration Release -o $GITHUB_WORKSPACE
       - name: Pack Fuji.Generator
