@@ -602,6 +602,26 @@ public partial class ServiceCollectionBuilder {}
 ").ConfigureAwait(false);
     }
 
+    [Test]
+    public async Task ServiceCollectionBuilder_IncludeInterfaceImplementors()
+    {
+        await RunGenerator(@"
+namespace Test;
+
+public interface IDependency {}
+[Fuji.TransientService(typeof(IDependency))]
+public class Dependency {}
+public interface IService {}
+public class Service : IService
+{
+    public Service(IDependency dependency) {}
+}
+
+[Fuji.ServiceCollectionBuilder(IncludeInterfaceImplementors = typeof(IService))]
+public partial class ServiceCollectionBuilder {}
+").ConfigureAwait(false);
+    }
+
     private string GenerateCode(GenerateTestCase testCase)
     {
         var builder = new StringBuilder();

@@ -10,7 +10,7 @@ public class ServiceCollectionBuilderProcessor
     private readonly Compilation _compilation;
     private readonly INamedTypeSymbol _enumerableSymbol;
     private readonly INamedTypeSymbol? _fromKeyedServicesAttribute;
-    private readonly ImmutableArray<AttributedSymbol> _libraryCandidates;
+    private readonly ImmutableArray<INamedTypeSymbol> _libraryTypes;
     private readonly INamedTypeSymbol _obsoleteSymbol;
     private readonly ImmutableArray<(INamedTypeSymbol Symbol, ServiceLifetime Lifetime)> _provideAttributes;
     private readonly INamedTypeSymbol _providedByCollectionAttribute;
@@ -43,12 +43,11 @@ public class ServiceCollectionBuilderProcessor
             _transientServiceAttribute,
             _singletonServiceAttribute,
             _scopedServiceAttribute);
-        _libraryCandidates = GetLibraryCandidates(
-            ImmutableArray.Create(_transientServiceAttribute, _singletonServiceAttribute, _scopedServiceAttribute));
+        _libraryTypes = GetLibraryTypes();
 
     }
 
-    private static InjectionCandidate? CreateSelfDescribedInjectionCandidate(AttributedSymbol type,
+    private static InjectionCandidate CreateSelfDescribedInjectionCandidate(AttributedSymbol type,
         ServiceLifetime serviceLifetime)
     {
         var interfaceType =
@@ -66,6 +65,7 @@ public class ServiceCollectionBuilderProcessor
     private void GenerateCode(AttributedSymbol provider,
         ImmutableArray<InjectionCandidate> selfDescribedServices,
         INamedTypeSymbol? providedByCollectionAttribute,
+        ImmutableArray<INamedTypeSymbol> allTypes,
         Func<ServiceCollectionBuilderDefinition, string> generateContent)
     {
         var injectionCandidates =
@@ -77,9 +77,19 @@ public class ServiceCollectionBuilderProcessor
         var includeAllServices =
             Convert.ToBoolean(provider.Attribute.NamedArguments.Where(arg => arg.Key == "IncludeAllServices")
                 .Select(arg => arg.Value.Value).FirstOrDefault());
+        ImmutableArray<INamedTypeSymbol> serviceRoots = ImmutableArray<INamedTypeSymbol>.Empty;
+        var includeInterfaceImplementors =
+            provider.Attribute.NamedArguments.Where(arg => arg.Key == "IncludeInterfaceImplementors")
+                .Select(arg => arg.Value.Value as INamedTypeSymbol).FirstOrDefault();
+        if (includeInterfaceImplementors != null)
+        {
+            serviceRoots = allTypes.Where(type =>
+                    !type.IsAbstract && type.AllInterfaces.Contains(includeInterfaceImplementors, SymbolEqualityComparer.Default))
+                .ToImmutableArray();
+        }
         var diagnosticReporter = new DiagnosticReporter(_sourceProductionContext);
         var injectableServices = GetInjectableServices(diagnosticReporter, provider.Symbol, injectionCandidates, selfDescribedServices, providedByCollection,
-            includeAllServices);
+            includeAllServices, serviceRoots);
 
         if (diagnosticReporter.HasError)
             return;
@@ -94,22 +104,22 @@ public class ServiceCollectionBuilderProcessor
     }
 
     private ImmutableArray<(INamedTypeSymbol Symbol, string? Key)> GetConstructorArguments(DiagnosticReporter diagnosticReporter,
-        ITypeSymbol providerType, InjectionCandidate service, Func<(ITypeSymbol Type, string? Key), bool> isValidService)
+        ITypeSymbol providerType, INamedTypeSymbol service, IMethodSymbol? customFactory, Func<(ITypeSymbol Type, string? Key), bool> isValidService)
     {
-        if (service.CustomFactory != null)
+        if (customFactory != null)
             return ImmutableArray<(INamedTypeSymbol Symbol, string? Key)>.Empty;
-        var constructor = service.ImplementationType.Constructors
+        var constructor = service.Constructors
             .OrderByDescending(ctor => ctor.Parameters.Length)
             .FirstOrDefault(ctor =>
                 ctor.Parameters.All(parameter => isValidService((parameter.Type, GetParameterKey(parameter)))));
         if (constructor == null)
         {
-            var targetConstructor = service.ImplementationType.Constructors
+            var targetConstructor = service.Constructors
                 .OrderByDescending(ctor => ctor.Parameters.Length)
                 .First();
             var missingTypes = targetConstructor.Parameters.Where(parameter => !isValidService((parameter.Type, GetParameterKey(parameter))))
                 .Select(parameter => (parameter.Type, GetParameterKey(parameter))).ToImmutableArray();
-            diagnosticReporter.ReportMissingServices(providerType, service.ImplementationType, missingTypes,
+            diagnosticReporter.ReportMissingServices(providerType, service, missingTypes,
                 targetConstructor.Locations.First());
             return ImmutableArray<(INamedTypeSymbol Symbol, string? Key)>.Empty;
         }
@@ -122,7 +132,8 @@ public class ServiceCollectionBuilderProcessor
         DiagnosticReporter diagnosticReporter, ITypeSymbol providerType,
         ImmutableArray<InjectionCandidate> injectionCandidates,
         ImmutableArray<InjectionCandidate> selfDescribedServices,
-        IEnumerable<(ISymbol, string? Key)> providedByCollection, bool includeAllServices)
+        IEnumerable<(ISymbol, string? Key)> providedByCollection, bool includeAllServices,
+        ImmutableArray<INamedTypeSymbol> serviceRoots)
     {
         var identifiedServices = new Dictionary<(ISymbol, string?), InjectableService>(KeyedServiceComparer.Instance);
         var providedByCollectionHashSet = providedByCollection.ToImmutableHashSet(KeyedServiceComparer.Instance);
@@ -144,21 +155,25 @@ public class ServiceCollectionBuilderProcessor
             foreach (var service in selfDescribedServices)
                 services.Enqueue(service);
         }
+
+        foreach (var serviceRoot in serviceRoots)
+        {
+            var constructorArguments =
+                GetConstructorArguments(diagnosticReporter, providerType, serviceRoot, null, IsValidService());
+            foreach (var arg in constructorArguments)
+            {
+                foreach (var service in serviceLookup[arg])
+                    services.Enqueue(service);
+            }
+        }
+
         while (services.Count > 0)
         {
             var service = services.Dequeue();
             if (ServiceHasBeenProcessed((service.InterfaceType, service.Key)) || ServiceHasBeenProcessed((service.ImplementationType, service.Key)))
                 continue;
-            var constructorArguments = GetConstructorArguments(diagnosticReporter, providerType, service,
-                (definition) =>
-                {
-                    var resolvedType =
-                        definition.Type is INamedTypeSymbol { IsGenericType: true } namedType &&
-                        SymbolEqualityComparer.Default.Equals(_enumerableSymbol, definition.Type.OriginalDefinition)
-                            ? namedType.TypeArguments[0]
-                            : definition.Type;
-                    return providedByCollectionHashSet.Contains((resolvedType, definition.Key)) || validServices.Contains((resolvedType, definition.Key));
-                });
+            var constructorArguments = GetConstructorArguments(diagnosticReporter, providerType,
+                service.ImplementationType, service.CustomFactory, IsValidService());
             var hasObsoleteAttribute =
                 service.InterfaceType.GetAttributes().Any(r =>
                     SymbolEqualityComparer.Default.Equals(_obsoleteSymbol, r.AttributeClass)) ||
@@ -176,6 +191,19 @@ public class ServiceCollectionBuilderProcessor
             }
         }
         return identifiedServices.Values.ToImmutableArray();
+
+        Func<(ITypeSymbol Type, string? Key), bool> IsValidService()
+        {
+            return (definition) =>
+            {
+                var resolvedType =
+                    definition.Type is INamedTypeSymbol { IsGenericType: true } namedType &&
+                    SymbolEqualityComparer.Default.Equals(_enumerableSymbol, definition.Type.OriginalDefinition)
+                        ? namedType.TypeArguments[0]
+                        : definition.Type;
+                return providedByCollectionHashSet.Contains((resolvedType, definition.Key)) || validServices.Contains((resolvedType, definition.Key));
+            };
+        }
     }
 
     private ImmutableArray<InjectionCandidate> GetInjectionCandidates(
@@ -222,11 +250,10 @@ public class ServiceCollectionBuilderProcessor
             .ToImmutableArray();
     }
 
-    private ImmutableArray<AttributedSymbol> GetLibraryCandidates(
-        ImmutableArray<INamedTypeSymbol> attributeTypeSymbols)
+    private ImmutableArray<INamedTypeSymbol> GetLibraryTypes()
     {
         return _compilation.SourceModule.ReferencedAssemblySymbols
-            .SelectMany(assemblySymbol => GetSymbols(assemblySymbol.GlobalNamespace, attributeTypeSymbols))
+            .SelectMany(assemblySymbol => GetSymbols(assemblySymbol.GlobalNamespace))
             .ToImmutableArray();
     }
 
@@ -278,30 +305,32 @@ public class ServiceCollectionBuilderProcessor
         })).ToImmutableArray();
     }
 
-    private IEnumerable<AttributedSymbol> GetSymbols(INamespaceSymbol namespaceSymbol,
-        ImmutableArray<INamedTypeSymbol> attributeTypeSymbols)
+    private IEnumerable<INamedTypeSymbol> GetSymbols(INamespaceSymbol namespaceSymbol)
     {
         foreach (var symbol in namespaceSymbol.GetTypeMembers())
-        {
-            var attributes = symbol.GetAttributes();
-            var attributeData = attributes.FirstOrDefault(attribute => attributeTypeSymbols.Any(
-                attributeTypeSymbol =>
-                    SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, attributeTypeSymbol)));
-            if (attributeData != null)
-                yield return new AttributedSymbol(symbol, attributeData);
-        }
+            yield return symbol;
         foreach (var subNamespaceSymbol in namespaceSymbol.GetNamespaceMembers())
         {
-            foreach (var symbol in GetSymbols(subNamespaceSymbol, attributeTypeSymbols))
+            foreach (var symbol in GetSymbols(subNamespaceSymbol))
                 yield return symbol;
         }
     }
 
-    public void Process(ImmutableArray<TypeDeclarationSyntax> serviceCollectionBuilderTypes)
+    public void Process(ImmutableArray<TypeDeclarationSyntax> typeSyntaxes)
     {
-        var partitionedTypes = ResolveTypes(serviceCollectionBuilderTypes)
-            .Concat(_libraryCandidates)
-            .ToLookup(type => type.Attribute.AttributeClass, SymbolEqualityComparer.Default);
+        var allTypes = ResolveTypes(typeSyntaxes).Concat(_libraryTypes).ToImmutableArray();
+        var attributedSymbols = from type in allTypes.Select(symbol =>
+            {
+                var attributes = symbol.GetAttributes();
+                var attributeData = attributes.FirstOrDefault(attribute => _attributeTypeSymbols.Any(
+                    attributeTypeSymbol =>
+                        SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, attributeTypeSymbol)));
+                return (symbol, attributeData);
+            })
+            where type.attributeData != null
+            select new AttributedSymbol(type.symbol, type.attributeData);
+        var partitionedTypes =
+            attributedSymbols.ToLookup(type => type.Attribute.AttributeClass, SymbolEqualityComparer.Default);
 
         var transientSelfDescribedServices = partitionedTypes[_transientServiceAttribute]
             .Select(type => CreateSelfDescribedInjectionCandidate(type, ServiceLifetime.Transient));
@@ -312,38 +341,28 @@ public class ServiceCollectionBuilderProcessor
         var selfDescribedServices = transientSelfDescribedServices
             .Concat(singletonSelfDescribedServices)
             .Concat(scopedSelfDescribedServices)
-            .Where(candidate => candidate is not null)
-            .Cast<InjectionCandidate>()
             .ToImmutableArray();
 
-        foreach (var provider in partitionedTypes[_serviceCollectionBuilderAttributeType])
+        var providers = partitionedTypes[_serviceCollectionBuilderAttributeType].Where(symbol =>
+            SymbolEqualityComparer.Default.Equals(symbol.Symbol.ContainingAssembly, _compilation.Assembly));
+        foreach (var provider in providers)
         {
-            GenerateCode(provider, selfDescribedServices,
-                _providedByCollectionAttribute,
+            GenerateCode(provider, selfDescribedServices, _providedByCollectionAttribute, allTypes,
                 definition =>
                     new SourceCodeGenerator(definition).GenerateServiceCollectionBuilder());
         }
     }
 
-    private ImmutableArray<AttributedSymbol> ResolveTypes(
-        ImmutableArray<TypeDeclarationSyntax> typeDeclarationSyntaxes)
+    private ImmutableArray<INamedTypeSymbol> ResolveTypes(ImmutableArray<TypeDeclarationSyntax> typeDeclarationSyntaxes)
     {
-        return typeDeclarationSyntaxes.Select<TypeDeclarationSyntax, AttributedSymbol?>(type =>
-            {
-                var model = _compilation.GetSemanticModel(type.SyntaxTree);
-                var symbol = model.GetDeclaredSymbol(type) as INamedTypeSymbol;
-                if (symbol == null)
-                    return null;
-                var attributes = symbol.GetAttributes();
-                var attributeData = attributes.FirstOrDefault(attribute => _attributeTypeSymbols.Any(
-                    attributeTypeSymbol =>
-                        SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, attributeTypeSymbol)));
-                if (attributeData == null)
-                    return null;
-                return new AttributedSymbol(symbol, attributeData);
-            })
-            .Where(symbol => symbol is not null)
-            .Cast<AttributedSymbol>()
+        return (from type in typeDeclarationSyntaxes.Select<TypeDeclarationSyntax, INamedTypeSymbol?>(type =>
+                {
+                    var model = _compilation.GetSemanticModel(type.SyntaxTree);
+                    var symbol = model.GetDeclaredSymbol(type) as INamedTypeSymbol;
+                    return symbol;
+                })
+                where type != null
+                select type)
             .ToImmutableArray();
     }
 
