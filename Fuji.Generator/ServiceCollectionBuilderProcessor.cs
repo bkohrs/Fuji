@@ -87,6 +87,15 @@ public class ServiceCollectionBuilderProcessor
                     !type.IsAbstract && type.AllInterfaces.Contains(includeInterfaceImplementors, SymbolEqualityComparer.Default))
                 .ToImmutableArray();
         }
+        var includeClassInheritors =
+            provider.Attribute.NamedArguments.Where(arg => arg.Key == "IncludeClassInheritors")
+                .Select(arg => arg.Value.Value as INamedTypeSymbol).FirstOrDefault();
+        if (includeClassInheritors != null)
+        {
+            serviceRoots = allTypes.Where(type =>
+                    !type.IsAbstract && GetBaseTypes(type).Contains(includeClassInheritors, SymbolEqualityComparer.Default))
+                .ToImmutableArray();
+        }
         var diagnosticReporter = new DiagnosticReporter(_sourceProductionContext);
         var injectableServices = GetInjectableServices(diagnosticReporter, provider.Symbol, injectionCandidates, selfDescribedServices, providedByCollection,
             includeAllServices, serviceRoots);
@@ -101,6 +110,18 @@ public class ServiceCollectionBuilderProcessor
             return;
         var fileName = $"{definition.ServiceCollectionBuilderType.ToDisplayString()}.generated.cs";
         _sourceProductionContext.AddSource(fileName, fileContent);
+    }
+
+    private ImmutableArray<INamedTypeSymbol> GetBaseTypes(INamedTypeSymbol namedTypeSymbol)
+    {
+        var baseTypes = new List<INamedTypeSymbol>();
+        var current = namedTypeSymbol;
+        while (current.BaseType != null)
+        {
+            baseTypes.Add(current.BaseType);
+            current = current.BaseType;
+        }
+        return baseTypes.ToImmutableArray();
     }
 
     private ImmutableArray<(INamedTypeSymbol Symbol, string? Key)> GetConstructorArguments(DiagnosticReporter diagnosticReporter,

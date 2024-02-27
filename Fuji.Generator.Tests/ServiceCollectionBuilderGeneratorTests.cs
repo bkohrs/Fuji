@@ -622,6 +622,27 @@ public partial class ServiceCollectionBuilder {}
 ").ConfigureAwait(false);
     }
 
+    [Test]
+    public async Task ServiceCollectionBuilder_IncludeClassInheritors()
+    {
+        await RunGenerator(@"
+namespace Test;
+
+public interface IDependency {}
+[Fuji.TransientService(typeof(IDependency))]
+public class Dependency {}
+public abstract class Grandparent {}
+public abstract class Parent : Grandparent {}
+public class Service : Parent
+{
+    public Service(IDependency dependency) {}
+}
+
+[Fuji.ServiceCollectionBuilder(IncludeClassInheritors = typeof(Grandparent))]
+public partial class ServiceCollectionBuilder {}
+").ConfigureAwait(false);
+    }
+
     private string GenerateCode(GenerateTestCase testCase)
     {
         var builder = new StringBuilder();
