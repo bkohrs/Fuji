@@ -145,7 +145,7 @@ public class ServiceCollectionBuilderProcessor
             return ImmutableArray<(INamedTypeSymbol Symbol, string? Key)>.Empty;
         }
         return constructor.Parameters
-            .Select(parameter => ((INamedTypeSymbol)parameter.Type, GetParameterKey(parameter)))
+            .Select(parameter => ((INamedTypeSymbol)NormalizeType(parameter.Type), GetParameterKey(parameter)))
             .ToImmutableArray();
     }
 
@@ -229,11 +229,7 @@ public class ServiceCollectionBuilderProcessor
         {
             return (definition) =>
             {
-                var resolvedType =
-                    definition.Type is INamedTypeSymbol { IsGenericType: true } namedType &&
-                    SymbolEqualityComparer.Default.Equals(_enumerableSymbol, definition.Type.OriginalDefinition)
-                        ? namedType.TypeArguments[0]
-                        : definition.Type;
+                var resolvedType = NormalizeType(definition.Type);
                 return providedByCollectionHashSet.Contains((resolvedType, definition.Key)) || validServices.Contains((resolvedType, definition.Key));
             };
         }
@@ -356,6 +352,14 @@ public class ServiceCollectionBuilderProcessor
             foreach (var symbol in GetSymbols(subNamespaceSymbol))
                 yield return symbol;
         }
+    }
+
+    private ITypeSymbol NormalizeType(ITypeSymbol type)
+    {
+        return type is INamedTypeSymbol { IsGenericType: true } namedType &&
+               SymbolEqualityComparer.Default.Equals(_enumerableSymbol, type.OriginalDefinition)
+            ? namedType.TypeArguments[0]
+            : type;
     }
 
     public void Process(ImmutableArray<TypeDeclarationSyntax> typeSyntaxes)
