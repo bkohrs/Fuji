@@ -34,7 +34,9 @@ public class SourceCodeGenerator
                 using (var methodScope =
                        classScope.CreateScope("public void Build(IServiceCollection serviceCollection)"))
                 {
-                    foreach (var service in _definition.ProvidedServices.OrderBy(service => service.Priority))
+                    foreach (var service in _definition.ProvidedServices.OrderBy(service => service.Priority)
+                                 .ThenBy(r => r.InterfaceType.ToDisplayString())
+                                 .ThenBy(r => r.ImplementationType.ToDisplayString()))
                     {
                         if (service.HasObsoleteAttribute)
                             methodScope.WriteLine("#pragma warning disable CS0612");

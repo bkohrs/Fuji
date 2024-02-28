@@ -8,8 +8,8 @@ namespace Test
     {
         public void Build(IServiceCollection serviceCollection)
         {
-            serviceCollection.AddTransient(typeof(Test.IService), typeof(Test.Service));
             serviceCollection.AddTransient(typeof(Test.IDependency), typeof(Test.Dependency));
+            serviceCollection.AddTransient(typeof(Test.IService), typeof(Test.Service));
         }
     }
 }
