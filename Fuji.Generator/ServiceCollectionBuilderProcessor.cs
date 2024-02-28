@@ -168,8 +168,12 @@ public class ServiceCollectionBuilderProcessor
             .GroupBy(candidate => (candidate.InterfaceType, candidate.Key), KeyedServiceComparer.Instance)
             .Select(group => group.Key)
             .ToImmutableHashSet(KeyedServiceComparer.Instance);
-        var serviceLookup = injectionCandidates.Concat(selfDescribedServices)
+        var serviceInterfaceLookup = injectionCandidates.Concat(selfDescribedServices)
             .ToLookup(candidate => (candidate.InterfaceType, candidate.Key), KeyedServiceComparer.Instance);
+        var serviceImplementationLookup = serviceRoots.Length > 0
+            ? injectionCandidates.Concat(selfDescribedServices)
+                .ToLookup(candidate => (candidate.ImplementationType, candidate.Key), KeyedServiceComparer.Instance)
+            : null;
         var services = new Queue<InjectionCandidate>(injectionCandidates);
         if (includeAllServices)
         {
@@ -179,11 +183,19 @@ public class ServiceCollectionBuilderProcessor
 
         foreach (var serviceRoot in serviceRoots)
         {
+            var key = GetSymbolAttribute(serviceRoot)?.NamedArguments.Where(arg => arg.Key == "Key")
+                .Select(arg => Convert.ToString(arg.Value.Value)).FirstOrDefault();
+            if (serviceImplementationLookup != null)
+            {
+                foreach (var service in serviceImplementationLookup[(serviceRoot, key)])
+                    services.Enqueue(service);
+            }
+
             var constructorArguments =
                 GetConstructorArguments(diagnosticReporter, providerType, serviceRoot, null, IsValidService());
             foreach (var arg in constructorArguments)
             {
-                foreach (var service in serviceLookup[arg])
+                foreach (var service in serviceInterfaceLookup[arg])
                     services.Enqueue(service);
             }
         }
@@ -207,7 +219,7 @@ public class ServiceCollectionBuilderProcessor
             {
                 if (ServiceHasBeenProcessed(argument))
                     continue;
-                foreach (var argService in serviceLookup[argument])
+                foreach (var argService in serviceInterfaceLookup[argument])
                     services.Enqueue(argService);
             }
         }
@@ -326,6 +338,15 @@ public class ServiceCollectionBuilderProcessor
         })).ToImmutableArray();
     }
 
+    private AttributeData? GetSymbolAttribute(INamedTypeSymbol symbol)
+    {
+        var attributes = symbol.GetAttributes();
+        var attributeData = attributes.FirstOrDefault(attribute => _attributeTypeSymbols.Any(
+            attributeTypeSymbol =>
+                SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, attributeTypeSymbol)));
+        return attributeData;
+    }
+    
     private IEnumerable<INamedTypeSymbol> GetSymbols(INamespaceSymbol namespaceSymbol)
     {
         foreach (var symbol in namespaceSymbol.GetTypeMembers())
@@ -340,14 +361,8 @@ public class ServiceCollectionBuilderProcessor
     public void Process(ImmutableArray<TypeDeclarationSyntax> typeSyntaxes)
     {
         var allTypes = ResolveTypes(typeSyntaxes).Concat(_libraryTypes).ToImmutableArray();
-        var attributedSymbols = from type in allTypes.Select(symbol =>
-            {
-                var attributes = symbol.GetAttributes();
-                var attributeData = attributes.FirstOrDefault(attribute => _attributeTypeSymbols.Any(
-                    attributeTypeSymbol =>
-                        SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, attributeTypeSymbol)));
-                return (symbol, attributeData);
-            })
+        var attributedSymbols =
+            from type in allTypes.Select(symbol => (symbol, attributeData: GetSymbolAttribute(symbol)))
             where type.attributeData != null
             select new AttributedSymbol(type.symbol, type.attributeData);
         var partitionedTypes =

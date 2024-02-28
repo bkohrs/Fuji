@@ -623,6 +623,27 @@ public partial class ServiceCollectionBuilder {}
     }
 
     [Test]
+    public async Task ServiceCollectionBuilder_IncludeInterfaceImplementors_IncludesSelfIfAttributed()
+    {
+        await RunGenerator(@"
+namespace Test;
+
+public interface IDependency {}
+[Fuji.TransientService(typeof(IDependency))]
+public class Dependency {}
+public interface IService {}
+[Fuji.TransientService(typeof(IService))]
+public class Service : IService
+{
+    public Service(IDependency dependency) {}
+}
+
+[Fuji.ServiceCollectionBuilder(IncludeInterfaceImplementors = typeof(IService))]
+public partial class ServiceCollectionBuilder {}
+").ConfigureAwait(false);
+    }
+
+    [Test]
     public async Task ServiceCollectionBuilder_IncludeClassInheritors()
     {
         await RunGenerator(@"
@@ -633,6 +654,28 @@ public interface IDependency {}
 public class Dependency {}
 public abstract class Grandparent {}
 public abstract class Parent : Grandparent {}
+public class Service : Parent
+{
+    public Service(IDependency dependency) {}
+}
+
+[Fuji.ServiceCollectionBuilder(IncludeClassInheritors = typeof(Grandparent))]
+public partial class ServiceCollectionBuilder {}
+").ConfigureAwait(false);
+    }
+
+    [Test]
+    public async Task ServiceCollectionBuilder_IncludeClassInheritors_IncludesSelfIfAttributed()
+    {
+        await RunGenerator(@"
+namespace Test;
+
+public interface IDependency {}
+[Fuji.TransientService(typeof(IDependency))]
+public class Dependency {}
+public abstract class Grandparent {}
+public abstract class Parent : Grandparent {}
+[Fuji.TransientService(typeof(Service))]
 public class Service : Parent
 {
     public Service(IDependency dependency) {}
