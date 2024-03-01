@@ -617,7 +617,38 @@ public class Service : IService
     public Service(IDependency dependency) {}
 }
 
-[Fuji.ServiceCollectionBuilder(IncludeInterfaceImplementors = typeof(IService))]
+[Fuji.ServiceCollectionBuilder]
+[Fuji.IncludeInterfaceImplementors(typeof(IService))]
+public partial class ServiceCollectionBuilder {}
+").ConfigureAwait(false);
+    }
+    
+    [Test]
+    public async Task ServiceCollectionBuilder_IncludeInterfaceImplementors_Multiple()
+    {
+        await RunGenerator(@"
+namespace Test;
+
+public interface IDependency1 {}
+[Fuji.TransientService(typeof(IDependency1))]
+public class Dependency1 {}
+public interface IService1 {}
+public class Service1 : IService1
+{
+    public Service1(IDependency1 dependency) {}
+}
+public interface IDependency2 {}
+[Fuji.TransientService(typeof(IDependency2))]
+public class Dependency2 {}
+public interface IService2 {}
+public class Service2 : IService2
+{
+    public Service2(IDependency2 dependency) {}
+}
+
+[Fuji.ServiceCollectionBuilder]
+[Fuji.IncludeInterfaceImplementors(typeof(IService1))]
+[Fuji.IncludeInterfaceImplementors(typeof(IService2))]
 public partial class ServiceCollectionBuilder {}
 ").ConfigureAwait(false);
     }
@@ -638,7 +669,8 @@ public class Service : IService
     public Service(IDependency dependency) {}
 }
 
-[Fuji.ServiceCollectionBuilder(IncludeInterfaceImplementors = typeof(IService))]
+[Fuji.ServiceCollectionBuilder]
+[Fuji.IncludeInterfaceImplementors(typeof(IService))]
 public partial class ServiceCollectionBuilder {}
 ").ConfigureAwait(false);
     }
@@ -660,7 +692,8 @@ public class Service : IService
     public Service(System.Collections.Generic.IEnumerable<IDependency> dependency) {}
 }
 
-[Fuji.ServiceCollectionBuilder(IncludeInterfaceImplementors = typeof(IService))]
+[Fuji.ServiceCollectionBuilder]
+[Fuji.IncludeInterfaceImplementors(typeof(IService))]
 public partial class ServiceCollectionBuilder {}
 ").ConfigureAwait(false);
     }
