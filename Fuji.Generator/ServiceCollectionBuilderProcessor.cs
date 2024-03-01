@@ -11,6 +11,7 @@ public class ServiceCollectionBuilderProcessor
     private readonly INamedTypeSymbol _enumerableSymbol;
     private readonly INamedTypeSymbol? _fromKeyedServicesAttribute;
     private readonly INamedTypeSymbol _includeClassInheritorsAttribute;
+    private readonly INamedTypeSymbol _includeDependencyAttribute;
     private readonly INamedTypeSymbol _includeInterfaceImplementorsAttribute;
     private readonly ImmutableArray<INamedTypeSymbol> _libraryTypes;
     private readonly INamedTypeSymbol _obsoleteSymbol;
@@ -37,6 +38,7 @@ public class ServiceCollectionBuilderProcessor
         _provideServiceAttribute = compilation.GetRequiredTypeByMetadataName(AttributeNames.ProvideService);
         _providedByCollectionAttribute = compilation.GetRequiredTypeByMetadataName("Fuji.ProvidedByCollectionAttribute");
         _includeClassInheritorsAttribute = compilation.GetRequiredTypeByMetadataName("Fuji.IncludeClassInheritorsAttribute");
+        _includeDependencyAttribute = compilation.GetRequiredTypeByMetadataName("Fuji.IncludeDependencyAttribute");
         _includeInterfaceImplementorsAttribute = compilation.GetRequiredTypeByMetadataName("Fuji.IncludeInterfaceImplementorsAttribute");
         _provideAttributes = ImmutableArray.Create(
             (compilation.GetRequiredTypeByMetadataName(AttributeNames.ProvideTransient), ServiceLifetime.Transient),
@@ -82,19 +84,19 @@ public class ServiceCollectionBuilderProcessor
             Convert.ToBoolean(provider.Attribute.NamedArguments.Where(arg => arg.Key == "IncludeAllServices")
                 .Select(arg => arg.Value.Value).FirstOrDefault());
         var serviceRoots = new List<INamedTypeSymbol>();
-        var interfaceImplementors = GetInterfaceImplementors(provider.Symbol);
+        var interfaceImplementors = GetAttributedTypes(provider.Symbol, _includeInterfaceImplementorsAttribute);
         foreach (var interfaceSymbol in interfaceImplementors)
         {
             serviceRoots.AddRange(allTypes.Where(type =>
                     !type.IsAbstract && type.AllInterfaces.Contains(interfaceSymbol, SymbolEqualityComparer.Default)));
         }
-
-        var classInheritors = GetClassInheritors(provider.Symbol);
+        var classInheritors = GetAttributedTypes(provider.Symbol, _includeClassInheritorsAttribute);
         foreach (var classSymbol in classInheritors)
         {
             serviceRoots.AddRange(allTypes.Where(type =>
                     !type.IsAbstract && GetBaseTypes(type).Contains(classSymbol, SymbolEqualityComparer.Default)));
         }
+        serviceRoots.AddRange(GetAttributedTypes(provider.Symbol, _includeDependencyAttribute));
         var diagnosticReporter = new DiagnosticReporter(_sourceProductionContext);
         var injectableServices = GetInjectableServices(diagnosticReporter, provider.Symbol, injectionCandidates, selfDescribedServices, providedByCollection,
             includeAllServices, serviceRoots.ToImmutableArray());
@@ -111,6 +113,22 @@ public class ServiceCollectionBuilderProcessor
         _sourceProductionContext.AddSource(fileName, fileContent);
     }
 
+    private ImmutableArray<INamedTypeSymbol> GetAttributedTypes(INamedTypeSymbol symbol, INamedTypeSymbol attributeSymbol)
+    {
+        return (from namedTypeSymbol in symbol.GetAttributes()
+                .Select<AttributeData, INamedTypeSymbol?>(attribute =>
+                {
+                    if (!SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, attributeSymbol))
+                        return null;
+                    return attribute.ConstructorArguments.Length > 0 &&
+                           attribute.ConstructorArguments[0].Value is INamedTypeSymbol namedTypeSymbol
+                        ? namedTypeSymbol
+                        : null;
+                })
+            where namedTypeSymbol != null
+            select namedTypeSymbol).ToImmutableArray();
+    }
+
     private ImmutableArray<INamedTypeSymbol> GetBaseTypes(INamedTypeSymbol namedTypeSymbol)
     {
         var baseTypes = new List<INamedTypeSymbol>();
@@ -121,22 +139,6 @@ public class ServiceCollectionBuilderProcessor
             current = current.BaseType;
         }
         return baseTypes.ToImmutableArray();
-    }
-
-    private ImmutableArray<INamedTypeSymbol> GetClassInheritors(INamedTypeSymbol symbol)
-    {
-        return (from namedTypeSymbol in symbol.GetAttributes()
-                .Select<AttributeData, INamedTypeSymbol?>(attribute =>
-                {
-                    if (!SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, _includeClassInheritorsAttribute))
-                        return null;
-                    return attribute.ConstructorArguments.Length > 0 && 
-                           attribute.ConstructorArguments[0].Value is INamedTypeSymbol namedTypeSymbol
-                        ? namedTypeSymbol
-                        : null;
-                })
-            where namedTypeSymbol != null
-            select namedTypeSymbol).ToImmutableArray();
     }
 
     private ImmutableArray<(INamedTypeSymbol Symbol, string? Key)> GetConstructorArguments(DiagnosticReporter diagnosticReporter,
@@ -292,22 +294,6 @@ public class ServiceCollectionBuilderProcessor
             .Cast<InjectionCandidate>()
             .Concat(selfProvidedServices)
             .ToImmutableArray();
-    }
-
-    private ImmutableArray<INamedTypeSymbol> GetInterfaceImplementors(INamedTypeSymbol symbol)
-    {
-        return (from namedTypeSymbol in symbol.GetAttributes()
-                .Select<AttributeData, INamedTypeSymbol?>(attribute =>
-                {
-                    if (!SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, _includeInterfaceImplementorsAttribute))
-                        return null;
-                    return attribute.ConstructorArguments.Length > 0 && 
-                           attribute.ConstructorArguments[0].Value is INamedTypeSymbol namedTypeSymbol
-                        ? namedTypeSymbol
-                        : null;
-                })
-            where namedTypeSymbol != null
-            select namedTypeSymbol).ToImmutableArray();
     }
 
     private ImmutableArray<INamedTypeSymbol> GetLibraryTypes()
