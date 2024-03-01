@@ -10,6 +10,7 @@ public class ServiceCollectionBuilderProcessor
     private readonly Compilation _compilation;
     private readonly INamedTypeSymbol _enumerableSymbol;
     private readonly INamedTypeSymbol? _fromKeyedServicesAttribute;
+    private readonly INamedTypeSymbol _includeClassInheritorsAttribute;
     private readonly INamedTypeSymbol _includeInterfaceImplementorsAttribute;
     private readonly ImmutableArray<INamedTypeSymbol> _libraryTypes;
     private readonly INamedTypeSymbol _obsoleteSymbol;
@@ -35,6 +36,7 @@ public class ServiceCollectionBuilderProcessor
         _scopedServiceAttribute = compilation.GetRequiredTypeByMetadataName(AttributeNames.ScopedService);
         _provideServiceAttribute = compilation.GetRequiredTypeByMetadataName(AttributeNames.ProvideService);
         _providedByCollectionAttribute = compilation.GetRequiredTypeByMetadataName("Fuji.ProvidedByCollectionAttribute");
+        _includeClassInheritorsAttribute = compilation.GetRequiredTypeByMetadataName("Fuji.IncludeClassInheritorsAttribute");
         _includeInterfaceImplementorsAttribute = compilation.GetRequiredTypeByMetadataName("Fuji.IncludeInterfaceImplementorsAttribute");
         _provideAttributes = ImmutableArray.Create(
             (compilation.GetRequiredTypeByMetadataName(AttributeNames.ProvideTransient), ServiceLifetime.Transient),
@@ -86,13 +88,12 @@ public class ServiceCollectionBuilderProcessor
             serviceRoots.AddRange(allTypes.Where(type =>
                     !type.IsAbstract && type.AllInterfaces.Contains(interfaceSymbol, SymbolEqualityComparer.Default)));
         }
-        var includeClassInheritors =
-            provider.Attribute.NamedArguments.Where(arg => arg.Key == "IncludeClassInheritors")
-                .Select(arg => arg.Value.Value as INamedTypeSymbol).FirstOrDefault();
-        if (includeClassInheritors != null)
+
+        var classInheritors = GetClassInheritors(provider.Symbol);
+        foreach (var classSymbol in classInheritors)
         {
             serviceRoots.AddRange(allTypes.Where(type =>
-                    !type.IsAbstract && GetBaseTypes(type).Contains(includeClassInheritors, SymbolEqualityComparer.Default)));
+                    !type.IsAbstract && GetBaseTypes(type).Contains(classSymbol, SymbolEqualityComparer.Default)));
         }
         var diagnosticReporter = new DiagnosticReporter(_sourceProductionContext);
         var injectableServices = GetInjectableServices(diagnosticReporter, provider.Symbol, injectionCandidates, selfDescribedServices, providedByCollection,
@@ -120,6 +121,22 @@ public class ServiceCollectionBuilderProcessor
             current = current.BaseType;
         }
         return baseTypes.ToImmutableArray();
+    }
+
+    private ImmutableArray<INamedTypeSymbol> GetClassInheritors(INamedTypeSymbol symbol)
+    {
+        return (from namedTypeSymbol in symbol.GetAttributes()
+                .Select<AttributeData, INamedTypeSymbol?>(attribute =>
+                {
+                    if (!SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, _includeClassInheritorsAttribute))
+                        return null;
+                    return attribute.ConstructorArguments.Length > 0 && 
+                           attribute.ConstructorArguments[0].Value is INamedTypeSymbol namedTypeSymbol
+                        ? namedTypeSymbol
+                        : null;
+                })
+            where namedTypeSymbol != null
+            select namedTypeSymbol).ToImmutableArray();
     }
 
     private ImmutableArray<(INamedTypeSymbol Symbol, string? Key)> GetConstructorArguments(DiagnosticReporter diagnosticReporter,

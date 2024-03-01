@@ -714,7 +714,38 @@ public class Service : Parent
     public Service(IDependency dependency) {}
 }
 
-[Fuji.ServiceCollectionBuilder(IncludeClassInheritors = typeof(Grandparent))]
+[Fuji.ServiceCollectionBuilder]
+[Fuji.IncludeClassInheritors(typeof(Grandparent))]
+public partial class ServiceCollectionBuilder {}
+").ConfigureAwait(false);
+    }
+
+    [Test]
+    public async Task ServiceCollectionBuilder_IncludeClassInheritors_Multiple()
+    {
+        await RunGenerator(@"
+namespace Test;
+
+public interface IDependency1 {}
+[Fuji.TransientService(typeof(IDependency1))]
+public class Dependency1 {}
+public abstract class Parent1{}
+public class Service1 : Parent1
+{
+    public Service1(IDependency1 dependency) {}
+}
+public interface IDependency2 {}
+[Fuji.TransientService(typeof(IDependency2))]
+public class Dependency2 {}
+public abstract class Parent2{}
+public class Service2 : Parent2
+{
+    public Service2(IDependency2 dependency) {}
+}
+
+[Fuji.ServiceCollectionBuilder]
+[Fuji.IncludeClassInheritors(typeof(Parent1))]
+[Fuji.IncludeClassInheritors(typeof(Parent2))]
 public partial class ServiceCollectionBuilder {}
 ").ConfigureAwait(false);
     }
@@ -736,7 +767,8 @@ public class Service : Parent
     public Service(IDependency dependency) {}
 }
 
-[Fuji.ServiceCollectionBuilder(IncludeClassInheritors = typeof(Grandparent))]
+[Fuji.ServiceCollectionBuilder]
+[Fuji.IncludeClassInheritors(typeof(Grandparent))]
 public partial class ServiceCollectionBuilder {}
 ").ConfigureAwait(false);
     }
@@ -759,7 +791,8 @@ public class Service : Parent
     public Service(System.Collections.Generic.IEnumerable<IDependency> dependency) {}
 }
 
-[Fuji.ServiceCollectionBuilder(IncludeClassInheritors = typeof(Grandparent))]
+[Fuji.ServiceCollectionBuilder]
+[Fuji.IncludeClassInheritors(typeof(Grandparent))]
 public partial class ServiceCollectionBuilder {}
 ").ConfigureAwait(false);
     }
