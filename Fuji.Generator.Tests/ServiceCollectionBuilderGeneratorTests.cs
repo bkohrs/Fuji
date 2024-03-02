@@ -840,6 +840,57 @@ public partial class ServiceCollectionBuilder {}
 ").ConfigureAwait(false);
     }
 
+    [Test]
+    public async Task ServiceCollectionBuilder_PropertyInjection()
+    {
+        await RunGenerator(@"
+namespace Test;
+
+public class InjectionAttribute : System.Attribute {}
+public interface IDependency {}
+[Fuji.TransientService(typeof(IDependency))]
+public class Dependency {}
+public interface IService {}
+public class Service : IService
+{
+    [Injection]
+    public IDependency Dependency { get; }
+}
+
+[Fuji.ServiceCollectionBuilder]
+[Fuji.IncludeDependency(typeof(Service))]
+[Fuji.PropertyInjectionType(typeof(InjectionAttribute))]
+public partial class ServiceCollectionBuilder {}
+").ConfigureAwait(false);
+    }
+
+    [Test]
+    public async Task ServiceCollectionBuilder_PropertyInjection_BaseClass()
+    {
+        await RunGenerator(@"
+namespace Test;
+
+public class InjectionAttribute : System.Attribute {}
+public interface IDependency {}
+[Fuji.TransientService(typeof(IDependency))]
+public class Dependency {}
+public interface IService {}
+public class Parent
+{
+    [Injection]
+    public IDependency Dependency { get; }
+}
+public class Service : Parent, IService
+{
+}
+
+[Fuji.ServiceCollectionBuilder]
+[Fuji.IncludeDependency(typeof(Service))]
+[Fuji.PropertyInjectionType(typeof(InjectionAttribute))]
+public partial class ServiceCollectionBuilder {}
+").ConfigureAwait(false);
+    }
+
     private string GenerateCode(GenerateTestCase testCase)
     {
         var builder = new StringBuilder();
