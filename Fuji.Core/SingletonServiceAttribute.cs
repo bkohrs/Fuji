@@ -1,6 +1,6 @@
 namespace Fuji;
 
-[AttributeUsage(AttributeTargets.Class)]
+[AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
 public class SingletonServiceAttribute : Attribute
 {
     public SingletonServiceAttribute(Type? interfaceType = null)

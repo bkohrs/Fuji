@@ -1,6 +1,6 @@
 namespace Fuji;
 
-[AttributeUsage(AttributeTargets.Class)]
+[AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
 public class ScopedServiceAttribute : Attribute
 {
     public ScopedServiceAttribute(Type? interfaceType = null)

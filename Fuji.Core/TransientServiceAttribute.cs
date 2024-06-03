@@ -1,6 +1,6 @@
 namespace Fuji;
 
-[AttributeUsage(AttributeTargets.Class)]
+[AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
 public class TransientServiceAttribute : Attribute
 {
     public TransientServiceAttribute(Type? interfaceType = null)
