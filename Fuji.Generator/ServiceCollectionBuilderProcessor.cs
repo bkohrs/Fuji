@@ -197,16 +197,20 @@ public class ServiceCollectionBuilderProcessor
 
         foreach (var serviceRoot in serviceRoots)
         {
-            var key = GetSymbolAttribute(serviceRoot)?.NamedArguments.Where(arg => arg.Key == "Key")
-                .Select(arg => Convert.ToString(arg.Value.Value)).FirstOrDefault();
-            if (serviceImplementationLookup != null)
+            var attributes = GetSymbolAttributes(serviceRoot);
+            foreach (var attribute in attributes)
             {
-                foreach (var service in serviceImplementationLookup[(serviceRoot, key)])
-                    services.Enqueue(service);
+                var key = attribute.NamedArguments.Where(arg => arg.Key == "Key")
+                    .Select(arg => Convert.ToString(arg.Value.Value)).FirstOrDefault();
+                if (serviceImplementationLookup != null)
+                {
+                    foreach (var service in serviceImplementationLookup[(serviceRoot, key)])
+                        services.Enqueue(service);
+                }
             }
 
             var constructorArguments = GetRequiredServices(
-                    diagnosticReporter, providerType, serviceRoot, null, IsValidService(), injectionTypes);
+                diagnosticReporter, providerType, serviceRoot, null, IsValidService(), injectionTypes);
             foreach (var arg in constructorArguments)
             {
                 foreach (var service in serviceInterfaceLookup[arg])
@@ -379,13 +383,13 @@ public class ServiceCollectionBuilderProcessor
         })).ToImmutableArray();
     }
 
-    private AttributeData? GetSymbolAttribute(INamedTypeSymbol symbol)
+    private ImmutableArray<AttributeData> GetSymbolAttributes(INamedTypeSymbol symbol)
     {
         var attributes = symbol.GetAttributes();
-        var attributeData = attributes.FirstOrDefault(attribute => _attributeTypeSymbols.Any(
-            attributeTypeSymbol =>
-                SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, attributeTypeSymbol)));
-        return attributeData;
+        return attributes.Where(attribute => _attributeTypeSymbols.Any(
+                attributeTypeSymbol =>
+                    SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, attributeTypeSymbol)))
+            .ToImmutableArray();
     }
     
     private IEnumerable<INamedTypeSymbol> GetSymbols(INamespaceSymbol namespaceSymbol)
@@ -411,7 +415,7 @@ public class ServiceCollectionBuilderProcessor
     {
         var allTypes = ResolveTypes(typeSyntaxes).Concat(_libraryTypes).ToImmutableArray();
         var attributedSymbols =
-            from type in allTypes.Select(symbol => (symbol, attributeData: GetSymbolAttribute(symbol)))
+            from type in allTypes.SelectMany(symbol => GetSymbolAttributes(symbol).Select(attribute => (symbol, attributeData: attribute)))
             where type.attributeData != null
             select new AttributedSymbol(type.symbol, type.attributeData);
         var partitionedTypes =

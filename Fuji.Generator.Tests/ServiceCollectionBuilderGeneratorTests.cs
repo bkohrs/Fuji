@@ -399,6 +399,22 @@ public partial class ServiceCollectionBuilder {}
     }
 
     [Test]
+    public async Task ServiceCollectionBuilder_TransientKeyedService_MultipleKeys()
+    {
+        await RunGenerator(@"
+namespace Test;
+
+public interface IService {}
+[Fuji.TransientService(typeof(IService), Key = ""foo"")]
+[Fuji.TransientService(typeof(IService), Key = ""bar"")]
+public class Service : IService {}
+
+[Fuji.ServiceCollectionBuilder(IncludeAllServices = true)]
+public partial class ServiceCollectionBuilder {}
+").ConfigureAwait(false);
+    }
+
+    [Test]
     public async Task ServiceCollectionBuilder_ScopedKeyedService_StringLiteral()
     {
         await RunGenerator(@"
